@@ -690,4 +690,14 @@ gantt
 #### Operational Scale Projections:
 - **1,000 Monthly Meeting Hours**: $\approx \$987 / \text{month}$ infrastructure & API cost.
 - **10,000 Monthly Meeting Hours**: $\approx \$8,200 / \text{month}$ (accounting for tier volume discounts on Deepgram and Recall.ai).
-- **Recommended Pricing Model**: Corporate Seat: \$25–\$35/user/month (allowing up to 30 meeting hours/month, yielding a healthy 65–70% gross margin).
+
+### 8.4 Commercial Subscription Model & Pricing Tiers
+
+MeetMee provides a multi-tiered commercial model configured as follows:
+
+| Plan | Pricing | Meeting Allocation | Feature Set & Access Control |
+|---|---|---|---|
+| **Free Tier** | **₹0** | **3 Meetings Total** | • Autonomous Bot Attendance & Transcription<br>• Real-Time Mentor Q&A Pop-up HUD<br>• Post-Meeting Hint-Style Email Delivery<br>• Monthly History Auto-Purge (30-day lifecycle)<br>🔒 *Comics & Podcasts Locked* |
+| **Monthly Plan** | **₹99 / month** | **Up to 100 Meetings / month** | • Everything in Free Tier<br>• **✅ 4-Panel Visual Comic Strip Generator UNLOCKED**<br>• Monthly History Management with Permanent Save, Rename, Delete<br>• Always-Online Virtual Cloud Presence Daemon<br>🔒 *Podcasts Locked* |
+| **Yearly Plan** | **₹1,099 / year** | **Unlimited Meetings** | • Everything in Monthly Plan<br>• **✅ Unlimited Meeting Hours**<br>• **✅ NotebookLM Multilingual Podcast Engine UNLOCKED**<br>• **🌟 EXCLUSIVE FEATURE: Native Language Voice Assistant for General Use** (Hindi, Tamil, Telugu, Spanish, French, English)<br>• Always-Online Virtual Cloud Presence Daemon<br>• Dedicated Priority GPU Processing |
+

@@ -21,7 +21,11 @@ class User(Base):
     enable_chime_alert = Column(Boolean, default=True)
     enable_screen_flash = Column(Boolean, default=True)
     enable_qa_popup = Column(Boolean, default=True)
-    podcast_voice_pair = Column(String(50), default="conversational_duo_1")
-    email_summary_enabled = Column(Boolean, default=True)
+    # Subscription & Plan
+    subscription_tier = Column(String(20), default="free") # 'free', 'monthly' (₹99), 'yearly' (₹1099)
+    meetings_used = Column(String(10), default="0")
+    allow_comic = Column(Boolean, default=False)
+    allow_podcast = Column(Boolean, default=False)
+    allow_native_assistant = Column(Boolean, default=False)
 
     meetings = relationship("Meeting", back_populates="user", cascade="all, delete-orphan")

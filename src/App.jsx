@@ -30,15 +30,25 @@ import {
   RotateCcw, 
   UserCheck, 
   Calendar,
-  AlertTriangle
+  AlertTriangle,
+  Lock,
+  Crown,
+  Zap,
+  Mic,
+  MessageSquare
 } from 'lucide-react';
 
 export default function App() {
   const [meetingUrl, setMeetingUrl] = useState('');
   const [meetingTitle, setMeetingTitle] = useState('');
   const [isBotJoined, setIsBotJoined] = useState(false);
-  const [activeTab, setActiveTab] = useState('notes'); // 'notes', 'podcast', 'comic', 'history'
+  const [activeTab, setActiveTab] = useState('notes'); // 'history', 'notes', 'podcast', 'comic', 'assistant', 'pricing'
   
+  // Subscription Plan State: 'free' | 'monthly' | 'yearly'
+  const [userPlan, setUserPlan] = useState('free');
+  const [meetingsCount, setMeetingsCount] = useState(1); // 1 of 3 used on free tier
+  const [upgradeNotification, setUpgradeNotification] = useState(null);
+
   // Always-Online Cloud Presence State
   const [isCloudPresenceActive, setIsCloudPresenceActive] = useState(true);
   const [userProfile] = useState({
@@ -69,6 +79,18 @@ export default function App() {
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [audioProgress, setAudioProgress] = useState(42);
 
+  // Native Language Voice Assistant State (Yearly Plan Exclusive)
+  const [assistantLang, setAssistantLang] = useState('hi');
+  const [assistantQuery, setAssistantQuery] = useState('');
+  const [isAssistantSpeaking, setIsAssistantSpeaking] = useState(false);
+  const [assistantHistory, setAssistantHistory] = useState([
+    {
+      role: 'assistant',
+      lang: 'hi',
+      text: 'नमस्ते एलेक्स! मैं आपकी व्यक्तिगत नेटिव वॉइस असिस्टेंट हूँ। आप मुझसे आगामी मीटिंग के एजेंडे, सारांश या किसी भी सामान्य कार्य के बारे में अपनी भाषा में पूछ सकते हैं।'
+    }
+  ]);
+
   // Meeting History with Monthly Auto-Erase & Permanent Save
   const initialMeetings = [
     {
@@ -77,7 +99,7 @@ export default function App() {
       date: "September 28, 2026",
       duration: "45 mins",
       platform: "Google Meet",
-      isPermanent: true, // Saved permanently by user
+      isPermanent: true,
       daysUntilPurge: null
     },
     {
@@ -86,7 +108,7 @@ export default function App() {
       date: "September 20, 2026",
       duration: "25 mins",
       platform: "Zoom",
-      isPermanent: false, // Unsaved: eligible for monthly erase
+      isPermanent: false,
       daysUntilPurge: 12
     },
     {
@@ -95,7 +117,7 @@ export default function App() {
       date: "September 12, 2026",
       duration: "50 mins",
       platform: "Microsoft Teams",
-      isPermanent: false, // Unsaved
+      isPermanent: false,
       daysUntilPurge: 4
     },
     {
@@ -104,7 +126,7 @@ export default function App() {
       date: "August 28, 2026",
       duration: "30 mins",
       platform: "Google Meet",
-      isPermanent: false, // Over 30 days old: will be wiped in monthly cleanup
+      isPermanent: false,
       daysUntilPurge: 1
     }
   ];
@@ -150,7 +172,14 @@ export default function App() {
   const handleDispatchBot = (e) => {
     e.preventDefault();
     if (!meetingUrl) return;
+
+    if (userPlan === 'free' && meetingsCount >= 3) {
+      setUpgradeNotification("Free Tier limit reached (3 of 3 meetings used). Please upgrade to Monthly (₹99) or Yearly (₹1099) plan to attend more meetings.");
+      return;
+    }
+
     setIsBotJoined(true);
+    setMeetingsCount(prev => prev + 1);
   };
 
   // Trigger Pop-up ONLY when mentor asks question
@@ -160,7 +189,6 @@ export default function App() {
 
     setActiveMentorQuestion(q);
 
-    // Contextual answer synthesis
     const qLower = q.toLowerCase();
     if (qLower.includes('schema') || qLower.includes('database')) {
       setSuggestedAnswer("PostgreSQL 16 with pgvector extension for unified relational state and sub-second cosine embeddings.");
@@ -168,18 +196,14 @@ export default function App() {
     } else if (qLower.includes('bot') || qLower.includes('offline')) {
       setSuggestedAnswer("The bot runs on independent server infrastructure. If you disconnect, it stays connected and records in the cloud.");
       setCitation("Discussed at 04:30 during Resilience review");
-    } else if (qLower.includes('podcast') || qLower.includes('language')) {
-      setSuggestedAnswer("NotebookLM-style dual-host script synthesized in the user's mother tongue via ElevenLabs Multilingual v2.");
-      setCitation("Discussed at 18:20 during Media Pipeline review");
-    } else if (qLower.includes('save') || qLower.includes('history') || qLower.includes('erase')) {
-      setSuggestedAnswer("Unsaved meetings are auto-erased monthly after 30 days. Clicking 'Save Permanently' protects the meeting forever.");
-      setCitation("Configured in MeetMee Retention Engine");
+    } else if (qLower.includes('pricing') || qLower.includes('plan') || qLower.includes('subscription')) {
+      setSuggestedAnswer("Free tier offers 3 meetings. Monthly is ₹99 for 100 meetings + Comics. Yearly is ₹1099 for unlimited + Podcasts + Native Voice Assistant.");
+      setCitation("MeetMee Subscription Matrix");
     } else {
       setSuggestedAnswer(`Grounded Answer: Regarding '${q}', the team aligned on sub-2s response targets and automated email summaries.`);
       setCitation("Extracted from recent meeting discussion");
     }
 
-    // MAKE POPUP APPEAR NOW
     setIsPopupVisible(true);
     setHudPulse(true);
     playChime();
@@ -224,7 +248,6 @@ export default function App() {
     const unsavedCount = meetings.filter(m => !m.isPermanent).length;
     const permanentCount = meetings.filter(m => m.isPermanent).length;
 
-    // Erase all unsaved meetings
     setMeetings(prev => prev.filter(m => m.isPermanent));
 
     setMonthlyPurgeMessage(
@@ -237,6 +260,44 @@ export default function App() {
     setMeetings(initialMeetings);
     setMonthlyPurgeMessage("Reset meeting history to original sample dataset.");
     setTimeout(() => setMonthlyPurgeMessage(null), 4000);
+  };
+
+  // Upgrade Plan handler
+  const handleSelectPlan = (planKey) => {
+    setUserPlan(planKey);
+    const planNames = { free: "Free Tier", monthly: "Monthly Plan (₹99)", yearly: "Yearly Unlimited Plan (₹1099)" };
+    setUpgradeNotification(`Plan updated to ${planNames[planKey]}!`);
+    setTimeout(() => setUpgradeNotification(null), 4000);
+  };
+
+  // Native Language Voice Assistant Handler
+  const handleAssistantSubmit = (e) => {
+    e.preventDefault();
+    if (!assistantQuery.trim()) return;
+
+    const userText = assistantQuery.trim();
+    setAssistantHistory(prev => [...prev, { role: 'user', text: userText }]);
+    setAssistantQuery('');
+    setIsAssistantSpeaking(true);
+    playChime();
+
+    setTimeout(() => {
+      let reply = "";
+      if (assistantLang === 'hi') {
+        reply = `मैंने आपकी पिछली मीटिंग के नोट्स की समीक्षा की है। मुख्य फोकस स्ट्रीमिंग लेटेंसी और ऑटोमैटिक ईमेल समरी पर था। क्या आप चाहते हैं कि मैं आपकी अगली मीटिंग का एजेंडा तैयार करूँ?`;
+      } else if (assistantLang === 'ta') {
+        reply = `உங்கள் முந்தைய சந்திப்பு குறிப்புகளை நான் மதிப்பாய்வு செய்துள்ளேன். முக்கிய கவனம் நேரலை ஆடியோ மற்றும் தானியங்கி மின்னஞ்சல் சுருக்கம். உங்கள் அடுத்த சந்திப்பின் நிகழ்ச்சி நிரலை நான் தயார் செய்ய வேண்டுமா?`;
+      } else if (assistantLang === 'te') {
+        reply = `నేను మీ మునుపటి మీటింగ్ నోట్స్ సమీక్షించాను. ప్రధాన దృష్టి స్ట్రీమింగ్ లేటెన్సీ మరియు ఆటోమేటిక్ ఇమెయిల్ సారాంశంపై ఉంది. మీ తదుపరి సమావేశ ఎజెండాను సిద్ధం చేయమంటారా?`;
+      } else if (assistantLang === 'es') {
+        reply = `He revisado las notas de tu reunión anterior. El punto clave fue la latencia inferior a 2 segundos y el resumen por correo electrónico. ¿Deseas preparar la agenda para la próxima llamada?`;
+      } else {
+        reply = `I've analyzed your recent meeting discussions. Key priorities include sub-2s mentor RAG latency and automated hint summaries. Would you like me to draft your preparation agenda?`;
+      }
+
+      setAssistantHistory(prev => [...prev, { role: 'assistant', lang: assistantLang, text: reply }]);
+      setIsAssistantSpeaking(false);
+    }, 900);
   };
 
   const podcastScripts = {
@@ -271,7 +332,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
       
-      {/* Top Header with User Profile (Always-Online Virtual Presence) */}
+      {/* Top Header with User Profile, Always-Online Presence & Subscription Tier Badge */}
       <header className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950/85 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           
@@ -290,9 +351,27 @@ export default function App() {
             </div>
           </div>
 
-          {/* User Profile & Always-Online Presence Indicator */}
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/90 px-3.5 py-1.5 shadow-sm">
+          {/* User Profile & Subscription Tier Status */}
+          <div className="flex items-center gap-3 sm:gap-4">
+            
+            {/* Active Subscription Badge */}
+            <button
+              onClick={() => setActiveTab('pricing')}
+              className="flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/20 transition-all"
+            >
+              {userPlan === 'yearly' && <Crown className="h-3.5 w-3.5 text-amber-400" />}
+              {userPlan === 'monthly' && <Zap className="h-3.5 w-3.5 text-indigo-400" />}
+              {userPlan === 'free' && <Sparkles className="h-3.5 w-3.5 text-slate-400" />}
+              <span>
+                {userPlan === 'free' && `Free Tier (${meetingsCount}/3 Used)`}
+                {userPlan === 'monthly' && `Pro Monthly (₹99/mo)`}
+                {userPlan === 'yearly' && `Yearly VIP (₹1099/yr)`}
+              </span>
+              <span className="text-[10px] text-amber-400 underline ml-0.5">Plans</span>
+            </button>
+
+            {/* Always-Online Presence Indicator */}
+            <div className="hidden sm:flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/90 px-3 py-1.5 shadow-sm">
               <div className="relative">
                 <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-500 flex items-center justify-center font-bold text-xs text-white">
                   AC
@@ -307,35 +386,26 @@ export default function App() {
               <div className="text-left">
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs font-semibold text-slate-200">{userProfile.name}</span>
-                  <span className="text-[10px] font-mono text-slate-400">({userProfile.id})</span>
                 </div>
-                <div className="flex items-center gap-1 text-[10px]">
-                  {isCloudPresenceActive ? (
-                    <span className="text-emerald-400 font-medium flex items-center gap-1">
-                      <UserCheck className="h-3 w-3" />
-                      Always Online (Cloud Presence Engine)
-                    </span>
-                  ) : (
-                    <span className="text-slate-400">Presence: Offline</span>
-                  )}
+                <div className="text-[10px] text-emerald-400 font-medium flex items-center gap-1">
+                  <UserCheck className="h-3 w-3" />
+                  Always Online (Cloud Active)
                 </div>
               </div>
             </div>
 
-            <button
-              onClick={() => setIsCloudPresenceActive(!isCloudPresenceActive)}
-              className={`rounded-lg px-2.5 py-1.5 text-xs font-medium border transition-colors ${
-                isCloudPresenceActive 
-                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20' 
-                  : 'border-slate-700 bg-slate-800 text-slate-400 hover:text-white'
-              }`}
-              title="Cloud Presence keeps your participant profile 'Online' in meetings even if you lose Wi-Fi"
-            >
-              {isCloudPresenceActive ? "Virtual Online: ON" : "Virtual Online: OFF"}
-            </button>
           </div>
         </div>
       </header>
+
+      {/* Global Upgrade Banner Notification */}
+      {upgradeNotification && (
+        <div className="bg-gradient-to-r from-blue-900/90 to-indigo-900/90 border-b border-blue-500/30 px-4 py-2.5 text-center text-xs font-semibold text-blue-100 flex items-center justify-center gap-2 animate-in fade-in">
+          <Sparkles className="h-4 w-4 text-amber-400" />
+          <span>{upgradeNotification}</span>
+          <button onClick={() => setUpgradeNotification(null)} className="ml-2 text-slate-400 hover:text-white">✕</button>
+        </div>
+      )}
 
       {/* Main Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -348,7 +418,7 @@ export default function App() {
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-xs font-semibold text-blue-400 mb-3">
                 <Sparkles className="h-3.5 w-3.5" />
-                Persistent AI Meeting Attendance & Transformation
+                Persistent AI Meeting Attendance &amp; Transformation
               </div>
               <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white leading-tight">
                 Autonomous Meeting Intelligence
@@ -396,6 +466,20 @@ export default function App() {
                 </button>
               </div>
 
+              {/* Free Tier Meeting Counter Notice */}
+              {userPlan === 'free' && (
+                <div className="flex items-center justify-between rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-xs text-slate-400">
+                  <span>Free Tier Allowance: <strong>{meetingsCount} of 3 meetings used</strong></span>
+                  <button 
+                    type="button"
+                    onClick={() => setActiveTab('pricing')} 
+                    className="text-amber-400 font-semibold hover:underline"
+                  >
+                    Upgrade for 100 or Unlimited →
+                  </button>
+                </div>
+              )}
+
               {isBotJoined && (
                 <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/30 p-3 text-xs text-emerald-300 flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -403,7 +487,7 @@ export default function App() {
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                       <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
                     </span>
-                    <span><strong>MeetMee AI Assistant</strong> joined & transcribing in cloud.</span>
+                    <span><strong>MeetMee AI Assistant</strong> joined &amp; transcribing in cloud.</span>
                   </div>
                   <span className="rounded bg-emerald-900/60 px-2 py-0.5 text-[10px] font-mono border border-emerald-500/20">
                     Offline Resilient
@@ -463,10 +547,10 @@ export default function App() {
                     <span className="text-[10px] font-semibold text-blue-400">Trigger Pop-up →</span>
                   </button>
                   <button
-                    onClick={() => triggerMentorQuestionPopup("Alex, how does our monthly meeting erase policy work?")}
+                    onClick={() => triggerMentorQuestionPopup("Alex, can you explain our subscription plans for new users?")}
                     className="text-left rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-blue-600/20 hover:border-blue-500/40 p-2 text-xs text-slate-200 transition-all flex items-center justify-between"
                   >
-                    <span>&ldquo;Alex, how does monthly meeting erase work?&rdquo;</span>
+                    <span>&ldquo;Alex, explain our subscription plans&rdquo;</span>
                     <span className="text-[10px] font-semibold text-blue-400">Trigger Pop-up →</span>
                   </button>
                 </div>
@@ -598,45 +682,289 @@ export default function App() {
               <p className="text-xs text-slate-400 mt-0.5">Explore your meeting history, retention policies, summaries, and transformations.</p>
             </div>
 
-            <div className="flex rounded-xl bg-slate-900 p-1 border border-slate-800">
+            <div className="flex flex-wrap rounded-xl bg-slate-900 p-1 border border-slate-800 gap-1">
               <button
                 onClick={() => setActiveTab('history')}
-                className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all ${
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
                   activeTab === 'history' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
                 }`}
               >
                 <Calendar className="h-3.5 w-3.5" />
-                Meeting History ({meetings.length})
+                History ({meetings.length})
               </button>
               <button
                 onClick={() => setActiveTab('notes')}
-                className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all ${
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
                   activeTab === 'notes' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
                 }`}
               >
                 <FileText className="h-3.5 w-3.5" />
                 Hint Notes &amp; Email
               </button>
-              <button
-                onClick={() => setActiveTab('podcast')}
-                className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all ${
-                  activeTab === 'podcast' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <Headphones className="h-3.5 w-3.5" />
-                Multilingual Podcast
-              </button>
+              
+              {/* Comic Tab (Unlocked on Monthly ₹99 or Yearly ₹1099) */}
               <button
                 onClick={() => setActiveTab('comic')}
-                className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all ${
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
                   activeTab === 'comic' ? 'bg-pink-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
                 }`}
               >
                 <Palette className="h-3.5 w-3.5" />
-                4-Panel Comic Strip
+                Comic Strip {userPlan === 'free' && <Lock className="h-3 w-3 text-amber-400" />}
+              </button>
+
+              {/* Podcast Tab (Unlocked on Yearly ₹1099) */}
+              <button
+                onClick={() => setActiveTab('podcast')}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                  activeTab === 'podcast' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Headphones className="h-3.5 w-3.5" />
+                Podcast {userPlan !== 'yearly' && <Lock className="h-3 w-3 text-amber-400" />}
+              </button>
+
+              {/* Native Voice Assistant Tab (NEW FEATURE: Yearly Plan Exclusive) */}
+              <button
+                onClick={() => setActiveTab('assistant')}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                  activeTab === 'assistant' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Mic className="h-3.5 w-3.5" />
+                Native Voice AI {userPlan !== 'yearly' && <Crown className="h-3 w-3 text-amber-400" />}
+              </button>
+
+              {/* Subscription Plans Tab */}
+              <button
+                onClick={() => setActiveTab('pricing')}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                  activeTab === 'pricing' ? 'bg-amber-600 text-white shadow-sm' : 'text-amber-400 hover:text-white'
+                }`}
+              >
+                <Crown className="h-3.5 w-3.5" />
+                Plans (₹99 / ₹1099)
               </button>
             </div>
           </div>
+
+          {/* ========================================================================= */}
+          {/* TAB: PRICING & SUBSCRIPTION TIERS (Free, ₹99/mo, ₹1099/yr) */}
+          {/* ========================================================================= */}
+          {activeTab === 'pricing' && (
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-6">
+              <div className="text-center max-w-xl mx-auto space-y-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-400">Subscription Plans</span>
+                <h3 className="text-2xl font-extrabold text-white">Choose Your MeetMee Tier</h3>
+                <p className="text-xs text-slate-400">
+                  Select a plan tailored for your meeting volume and content transformation requirements.
+                </p>
+              </div>
+
+              {/* 3 Pricing Cards Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+                
+                {/* TIER 1: Free Tier */}
+                <div className={`rounded-2xl border p-5 flex flex-col justify-between transition-all ${
+                  userPlan === 'free' 
+                    ? 'border-blue-500 bg-blue-950/20 ring-2 ring-blue-500/40' 
+                    : 'border-slate-800 bg-slate-950/70 hover:border-slate-700'
+                }`}>
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Starter</span>
+                      {userPlan === 'free' && (
+                        <span className="bg-blue-500/20 text-blue-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-blue-500/30">
+                          Current Plan
+                        </span>
+                      )}
+                    </div>
+                    <h4 className="text-xl font-bold text-white mt-1">Free Tier</h4>
+                    <div className="mt-3 flex items-baseline gap-1">
+                      <span className="text-3xl font-extrabold text-white">₹0</span>
+                      <span className="text-xs text-slate-400">/ first 3 meetings</span>
+                    </div>
+                    <p className="mt-2 text-xs text-slate-400">
+                      Perfect for trying out autonomous bot attendance and live mentor Q&amp;A.
+                    </p>
+
+                    <div className="mt-5 space-y-2 text-xs text-slate-300 border-t border-slate-800 pt-4">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                        <span>Up to <strong>3 meetings</strong> total</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                        <span>Autonomous Bot Ingestion &amp; Live ASR</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                        <span>Real-Time Mentor Q&amp;A Pop-up HUD</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                        <span>Hint-Style Notes &amp; Automated Email</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-slate-500">
+                        <X className="h-4 w-4 text-rose-500/70 shrink-0" />
+                        <span>No 4-Panel Comic Generator</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-slate-500">
+                        <X className="h-4 w-4 text-rose-500/70 shrink-0" />
+                        <span>No Multilingual Podcast Engine</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => handleSelectPlan('free')}
+                    className={`mt-6 w-full rounded-xl py-2.5 text-xs font-bold transition-all ${
+                      userPlan === 'free'
+                        ? 'bg-slate-800 text-slate-400 cursor-default'
+                        : 'border border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800'
+                    }`}
+                  >
+                    {userPlan === 'free' ? 'Selected' : 'Switch to Free Tier'}
+                  </button>
+                </div>
+
+                {/* TIER 2: Monthly Plan (₹99/month) */}
+                <div className={`rounded-2xl border p-5 flex flex-col justify-between transition-all ${
+                  userPlan === 'monthly' 
+                    ? 'border-indigo-500 bg-indigo-950/20 ring-2 ring-indigo-500/40' 
+                    : 'border-slate-800 bg-slate-950/70 hover:border-slate-700'
+                }`}>
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase tracking-wider text-indigo-400">Pro Monthly</span>
+                      {userPlan === 'monthly' && (
+                        <span className="bg-indigo-500/20 text-indigo-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-indigo-500/30">
+                          Current Plan
+                        </span>
+                      )}
+                    </div>
+                    <h4 className="text-xl font-bold text-white mt-1">Monthly Plan</h4>
+                    <div className="mt-3 flex items-baseline gap-1">
+                      <span className="text-3xl font-extrabold text-white">₹99</span>
+                      <span className="text-xs text-slate-400">/ month</span>
+                    </div>
+                    <p className="mt-2 text-xs text-slate-400">
+                      Unlocks up to 100 meetings and full 4-panel visual comic storytelling.
+                    </p>
+
+                    <div className="mt-5 space-y-2 text-xs text-slate-300 border-t border-slate-800 pt-4">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                        <span>Up to <strong>100 meetings</strong> per month</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                        <span className="text-emerald-300 font-semibold">4-Panel Visual Comic Strip Generator UNLOCKED</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                        <span>Real-Time Mentor Q&amp;A Pop-up HUD</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                        <span>Hint-Style Notes &amp; Immediate Email Delivery</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                        <span>Monthly Meeting Retention with Save Permanently</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-slate-500">
+                        <X className="h-4 w-4 text-rose-500/70 shrink-0" />
+                        <span>Podcast Engine (Yearly Only)</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => handleSelectPlan('monthly')}
+                    className={`mt-6 w-full rounded-xl py-2.5 text-xs font-bold transition-all ${
+                      userPlan === 'monthly'
+                        ? 'bg-indigo-600 text-white cursor-default'
+                        : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30'
+                    }`}
+                  >
+                    {userPlan === 'monthly' ? 'Active Plan' : 'Subscribe for ₹99/month'}
+                  </button>
+                </div>
+
+                {/* TIER 3: Yearly Plan (₹1099/year) */}
+                <div className={`rounded-2xl border p-5 flex flex-col justify-between relative overflow-hidden transition-all ${
+                  userPlan === 'yearly' 
+                    ? 'border-amber-500 bg-amber-950/20 ring-2 ring-amber-500/50' 
+                    : 'border-amber-500/40 bg-slate-950/70 hover:border-amber-500'
+                }`}>
+                  <div className="absolute top-0 right-0 bg-gradient-to-l from-amber-500 to-amber-600 text-slate-950 font-extrabold text-[9px] px-3 py-0.5 rounded-bl-lg uppercase tracking-wider">
+                    Best Value
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1">
+                        <Crown className="h-3.5 w-3.5" /> VIP All-Access
+                      </span>
+                      {userPlan === 'yearly' && (
+                        <span className="bg-amber-500/20 text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-500/30">
+                          Current Plan
+                        </span>
+                      )}
+                    </div>
+                    <h4 className="text-xl font-bold text-white mt-1">Yearly Plan</h4>
+                    <div className="mt-3 flex items-baseline gap-1">
+                      <span className="text-3xl font-extrabold text-white">₹1,099</span>
+                      <span className="text-xs text-slate-400">/ year</span>
+                    </div>
+                    <p className="mt-2 text-xs text-slate-400">
+                      Unlimited meetings, all features, plus the Native Language Voice Assistant.
+                    </p>
+
+                    <div className="mt-5 space-y-2 text-xs text-slate-300 border-t border-slate-800 pt-4">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                        <span><strong>Unlimited meetings</strong> (Zero limits)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                        <span className="text-amber-300 font-bold">NEW: Native Language Voice Assistant for General Use</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                        <span className="text-indigo-300 font-semibold">NotebookLM Multilingual Podcast Engine UNLOCKED</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                        <span className="text-pink-300 font-semibold">4-Panel Visual Comic Strip Generator UNLOCKED</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                        <span>Always-Online Virtual Cloud Presence</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                        <span>Priority 24/7 Processing Queue</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => handleSelectPlan('yearly')}
+                    className={`mt-6 w-full rounded-xl py-2.5 text-xs font-bold transition-all ${
+                      userPlan === 'yearly'
+                        ? 'bg-amber-500 text-slate-950 cursor-default'
+                        : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 shadow-lg shadow-amber-500/25'
+                    }`}
+                  >
+                    {userPlan === 'yearly' ? 'Active Plan' : 'Subscribe for ₹1,099/year'}
+                  </button>
+                </div>
+
+              </div>
+            </div>
+          )}
 
           {/* ========================================================================= */}
           {/* TAB: MEETING HISTORY (WITH MONTHLY ERASE, SAVE PERMANENTLY, RENAME, DELETE) */}
@@ -792,7 +1120,7 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB 1: Hint Notes */}
+          {/* TAB: HINT NOTES & EMAIL */}
           {activeTab === 'notes' && (
             <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-6">
               <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
@@ -911,177 +1239,345 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB 2: Multilingual Podcast */}
-          {activeTab === 'podcast' && (
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-6">
-              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
-                <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
-                    <Headphones className="h-5 w-5 text-indigo-400" />
-                    Feature 5: NotebookLM-Style Multilingual Podcast
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Converts meeting discussions into a 2-host conversational audio overview in your mother tongue.
-                  </p>
+          {/* TAB: COMIC STRIP (Gated: Locked for Free Tier, Unlocked for Monthly ₹99 & Yearly ₹1099) */}
+          {activeTab === 'comic' && (
+            userPlan === 'free' ? (
+              <div className="rounded-2xl border border-pink-500/30 bg-pink-950/20 p-8 text-center space-y-4">
+                <div className="h-14 w-14 rounded-2xl bg-pink-600/20 border border-pink-500/30 flex items-center justify-center text-pink-400 mx-auto">
+                  <Lock className="h-7 w-7" />
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <Globe className="h-4 w-4 text-slate-400" />
-                  <span className="text-xs text-slate-400">Mother Tongue:</span>
-                  <select
-                    value={podcastLang}
-                    onChange={(e) => setPodcastLang(e.target.value)}
-                    className="rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1 text-xs text-white focus:border-blue-500 focus:outline-none"
+                <h3 className="text-xl font-bold text-white">4-Panel Visual Comic Generator is Locked</h3>
+                <p className="text-xs text-slate-300 max-w-md mx-auto leading-relaxed">
+                  Free Tier accounts do not have access to visual comic storytelling. Upgrade to the <strong>Monthly Plan (₹99/month)</strong> or <strong>Yearly Plan (₹1099/year)</strong> to turn complex meeting discussions into engaging narrative comics.
+                </p>
+                <div className="pt-2 flex justify-center gap-3">
+                  <button
+                    onClick={() => handleSelectPlan('monthly')}
+                    className="rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-bold px-5 py-2.5 shadow-lg shadow-pink-600/30 transition-all"
                   >
-                    <option value="en">English</option>
-                    <option value="es">Spanish (Español)</option>
-                    <option value="hi">Hindi (हिंदी)</option>
-                    <option value="fr">French (Français)</option>
-                  </select>
+                    Unlock with Monthly Plan (₹99/mo)
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('pricing')}
+                    className="rounded-xl border border-slate-700 bg-slate-800 text-slate-200 text-xs font-semibold px-4 py-2.5 hover:bg-slate-700"
+                  >
+                    View All Plans
+                  </button>
                 </div>
               </div>
-
-              {/* Audio Player Card */}
-              <div className="rounded-xl border border-slate-800 bg-slate-950/80 p-4">
-                <div className="flex items-center gap-4">
-                  <button
-                    onClick={() => setIsAudioPlaying(!isAudioPlaying)}
-                    className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/25 transition-transform hover:scale-105 active:scale-95"
-                  >
-                    {isAudioPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 ml-0.5" />}
-                  </button>
-
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between text-xs text-slate-400 mb-1.5">
-                      <span className="font-medium text-slate-200">
-                        MeetMee Audio Overview: Architecture Sprint ({podcastLang.toUpperCase()})
+            ) : (
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-6">
+                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
+                  <div>
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <Palette className="h-5 w-5 text-pink-400" />
+                      Feature 6: 4-Panel Visual Comic Strip Generator
+                      <span className="text-[10px] bg-pink-500/20 text-pink-300 px-2 py-0.5 rounded-full border border-pink-500/30">
+                        {userPlan === 'monthly' ? 'Monthly Plan Unlocked' : 'Yearly VIP Unlocked'}
                       </span>
-                      <span className="font-mono">01:14 / 03:25</span>
-                    </div>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Deconstructs complex technical meetings into an engaging narrative storyboard with character dialogues.
+                    </p>
+                  </div>
 
-                    <div className="relative h-2 w-full overflow-hidden rounded-full bg-slate-800">
-                      <div 
-                        className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-300"
-                        style={{ width: `${audioProgress}%` }}
-                      ></div>
+                  <button
+                    onClick={() => alert("Downloading Comic Strip as high-res PNG...")}
+                    className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-all"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Export Comic (PNG)
+                  </button>
+                </div>
+
+                {/* 4 Comic Panels */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  
+                  {/* Panel 1 */}
+                  <div className="rounded-xl border border-rose-500/30 bg-gradient-to-b from-rose-950/30 to-slate-950 p-4 flex flex-col justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-rose-400">Panel 1: The Dilemma</span>
+                      <div className="mt-2.5 h-28 rounded-lg bg-slate-900 border border-slate-800 p-2.5 text-[11px] text-slate-400 italic flex items-center text-center">
+                        Stressed developer staring at offline screen as laptop battery dies mid-presentation.
+                      </div>
+                      <div className="mt-3 rounded-lg bg-slate-950 border border-slate-800 p-2.5 text-xs text-white">
+                        <strong className="text-[10px] text-slate-400 block mb-0.5">Alex (Developer):</strong>
+                        “My laptop battery died and Wi-Fi dropped mid-presentation!”
+                      </div>
                     </div>
                   </div>
 
-                  <Volume2 className="h-4 w-4 text-slate-400" />
-                </div>
-              </div>
-
-              {/* Synced Dialogue Transcript */}
-              <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
-                  <Sparkles className="h-3.5 w-3.5 text-blue-400" />
-                  Dual-Host Dialogue Transcript
-                </h4>
-                <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
-                  {currentPodcastScript.map((turn, idx) => (
-                    <div
-                      key={idx}
-                      className={`rounded-xl p-3 border text-xs leading-relaxed ${
-                        turn.speaker === "Host_A"
-                          ? "border-blue-500/20 bg-blue-950/20 text-blue-100"
-                          : "border-indigo-500/20 bg-indigo-950/20 text-indigo-100"
-                      }`}
-                    >
-                      <span className="rounded-full px-2 py-0.5 text-[10px] font-bold mr-2 bg-slate-800/80 text-blue-300">
-                        {turn.speaker === "Host_A" ? "🎙️ Host A (Inquirer)" : "💡 Host B (Expert)"}
-                      </span>
-                      {turn.text}
+                  {/* Panel 2 */}
+                  <div className="rounded-xl border border-amber-500/30 bg-gradient-to-b from-amber-950/30 to-slate-950 p-4 flex flex-col justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">Panel 2: The Brainstorm</span>
+                      <div className="mt-2.5 h-28 rounded-lg bg-slate-900 border border-slate-800 p-2.5 text-[11px] text-slate-400 italic flex items-center text-center">
+                        Engineers mapping out an event-driven bot infrastructure on a glowing digital board.
+                      </div>
+                      <div className="mt-3 rounded-lg bg-slate-950 border border-slate-800 p-2.5 text-xs text-white">
+                        <strong className="text-[10px] text-slate-400 block mb-0.5">Sarah (Architect):</strong>
+                        “MeetMee's autonomous cloud bot stays connected even when you disconnect.”
+                      </div>
                     </div>
-                  ))}
+                  </div>
+
+                  {/* Panel 3 */}
+                  <div className="rounded-xl border border-blue-500/30 bg-gradient-to-b from-blue-950/30 to-slate-950 p-4 flex flex-col justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400">Panel 3: The Breakthrough</span>
+                      <div className="mt-2.5 h-28 rounded-lg bg-slate-900 border border-slate-800 p-2.5 text-[11px] text-slate-400 italic flex items-center text-center">
+                        Mentor asks question; Alex's floating HUD instantly pops up with 120ms p95 answer.
+                      </div>
+                      <div className="mt-3 rounded-lg bg-slate-950 border border-slate-800 p-2.5 text-xs text-white">
+                        <strong className="text-[10px] text-slate-400 block mb-0.5">Mentor (Harrison):</strong>
+                        “Alex, what was our agreed streaming latency benchmark?”
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Panel 4 */}
+                  <div className="rounded-xl border border-emerald-500/30 bg-gradient-to-b from-emerald-950/30 to-slate-950 p-4 flex flex-col justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Panel 4: The Victory</span>
+                      <div className="mt-2.5 h-28 rounded-lg bg-slate-900 border border-slate-800 p-2.5 text-[11px] text-slate-400 italic flex items-center text-center">
+                        Satisfied team receiving instant hint-style notes and listening to dual-host podcast.
+                      </div>
+                      <div className="mt-3 rounded-lg bg-slate-950 border border-slate-800 p-2.5 text-xs text-white">
+                        <strong className="text-[10px] text-slate-400 block mb-0.5">The Team:</strong>
+                        “Meeting adjourned! Summaries emailed, podcast generated, and action items locked.”
+                      </div>
+                    </div>
+                  </div>
+
                 </div>
               </div>
-            </div>
+            )
           )}
 
-          {/* TAB 3: Visual Comic Strip */}
-          {activeTab === 'comic' && (
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-6">
-              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
+          {/* TAB: MULTILINGUAL PODCAST (Gated: Exclusive to Yearly Plan ₹1099) */}
+          {activeTab === 'podcast' && (
+            userPlan !== 'yearly' ? (
+              <div className="rounded-2xl border border-indigo-500/30 bg-indigo-950/20 p-8 text-center space-y-4">
+                <div className="h-14 w-14 rounded-2xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 mx-auto">
+                  <Crown className="h-7 w-7 text-amber-400" />
+                </div>
+                <h3 className="text-xl font-bold text-white">NotebookLM Multilingual Podcast Engine is Locked</h3>
+                <p className="text-xs text-slate-300 max-w-md mx-auto leading-relaxed">
+                  Dual-host conversational audio overview generation in your mother tongue is an exclusive feature of the <strong>Yearly VIP Plan (₹1099/year)</strong>.
+                </p>
+                <div className="pt-2 flex justify-center gap-3">
+                  <button
+                    onClick={() => handleSelectPlan('yearly')}
+                    className="rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-bold px-5 py-2.5 shadow-lg shadow-amber-500/25 transition-all"
+                  >
+                    Upgrade to Yearly Plan (₹1099/yr)
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('pricing')}
+                    className="rounded-xl border border-slate-700 bg-slate-800 text-slate-200 text-xs font-semibold px-4 py-2.5 hover:bg-slate-700"
+                  >
+                    View Plan Comparison
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-6">
+                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
+                  <div>
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <Headphones className="h-5 w-5 text-indigo-400" />
+                      Feature 5: NotebookLM-Style Multilingual Podcast
+                      <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full border border-amber-500/30">
+                        Yearly VIP Unlocked
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Converts meeting discussions into a 2-host conversational audio overview in your mother tongue.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Globe className="h-4 w-4 text-slate-400" />
+                    <span className="text-xs text-slate-400">Mother Tongue:</span>
+                    <select
+                      value={podcastLang}
+                      onChange={(e) => setPodcastLang(e.target.value)}
+                      className="rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1 text-xs text-white focus:border-blue-500 focus:outline-none"
+                    >
+                      <option value="en">English</option>
+                      <option value="es">Spanish (Español)</option>
+                      <option value="hi">Hindi (हिंदी)</option>
+                      <option value="fr">French (Français)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Audio Player Card */}
+                <div className="rounded-xl border border-slate-800 bg-slate-950/80 p-4">
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => setIsAudioPlaying(!isAudioPlaying)}
+                      className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/25 transition-transform hover:scale-105 active:scale-95"
+                    >
+                      {isAudioPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 ml-0.5" />}
+                    </button>
+
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between text-xs text-slate-400 mb-1.5">
+                        <span className="font-medium text-slate-200">
+                          MeetMee Audio Overview: Architecture Sprint ({podcastLang.toUpperCase()})
+                        </span>
+                        <span className="font-mono">01:14 / 03:25</span>
+                      </div>
+
+                      <div className="relative h-2 w-full overflow-hidden rounded-full bg-slate-800">
+                        <div 
+                          className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-300"
+                          style={{ width: `${audioProgress}%` }}
+                        ></div>
+                      </div>
+                    </div>
+
+                    <Volume2 className="h-4 w-4 text-slate-400" />
+                  </div>
+                </div>
+
+                {/* Synced Dialogue Transcript */}
                 <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
-                    <Palette className="h-5 w-5 text-pink-400" />
-                    Feature 6: 4-Panel Visual Comic Strip Generator
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Deconstructs complex technical meetings into an engaging narrative storyboard with character dialogues.
-                  </p>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5 text-blue-400" />
+                    Dual-Host Dialogue Transcript
+                  </h4>
+                  <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
+                    {currentPodcastScript.map((turn, idx) => (
+                      <div
+                        key={idx}
+                        className={`rounded-xl p-3 border text-xs leading-relaxed ${
+                          turn.speaker === "Host_A"
+                            ? "border-blue-500/20 bg-blue-950/20 text-blue-100"
+                            : "border-indigo-500/20 bg-indigo-950/20 text-indigo-100"
+                        }`}
+                      >
+                        <span className="rounded-full px-2 py-0.5 text-[10px] font-bold mr-2 bg-slate-800/80 text-blue-300">
+                          {turn.speaker === "Host_A" ? "🎙️ Host A (Inquirer)" : "💡 Host B (Expert)"}
+                        </span>
+                        {turn.text}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-
-                <button
-                  onClick={() => alert("Downloading Comic Strip as high-res PNG...")}
-                  className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-all"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  Export Comic (PNG)
-                </button>
               </div>
+            )
+          )}
 
-              {/* 4 Comic Panels */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                
-                {/* Panel 1 */}
-                <div className="rounded-xl border border-rose-500/30 bg-gradient-to-b from-rose-950/30 to-slate-950 p-4 flex flex-col justify-between">
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-rose-400">Panel 1: The Dilemma</span>
-                    <div className="mt-2.5 h-28 rounded-lg bg-slate-900 border border-slate-800 p-2.5 text-[11px] text-slate-400 italic flex items-center text-center">
-                      Stressed developer staring at offline screen as laptop battery dies mid-presentation.
-                    </div>
-                    <div className="mt-3 rounded-lg bg-slate-950 border border-slate-800 p-2.5 text-xs text-white">
-                      <strong className="text-[10px] text-slate-400 block mb-0.5">Alex (Developer):</strong>
-                      “My laptop battery died and Wi-Fi dropped mid-presentation!”
-                    </div>
-                  </div>
+          {/* TAB: NATIVE LANGUAGE VOICE ASSISTANT (NEW FEATURE: Exclusive to Yearly Plan ₹1099) */}
+          {activeTab === 'assistant' && (
+            userPlan !== 'yearly' ? (
+              <div className="rounded-2xl border border-emerald-500/30 bg-emerald-950/20 p-8 text-center space-y-4">
+                <div className="h-14 w-14 rounded-2xl bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mx-auto">
+                  <Crown className="h-7 w-7 text-amber-400" />
                 </div>
-
-                {/* Panel 2 */}
-                <div className="rounded-xl border border-amber-500/30 bg-gradient-to-b from-amber-950/30 to-slate-950 p-4 flex flex-col justify-between">
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">Panel 2: The Brainstorm</span>
-                    <div className="mt-2.5 h-28 rounded-lg bg-slate-900 border border-slate-800 p-2.5 text-[11px] text-slate-400 italic flex items-center text-center">
-                      Engineers mapping out an event-driven bot infrastructure on a glowing digital board.
-                    </div>
-                    <div className="mt-3 rounded-lg bg-slate-950 border border-slate-800 p-2.5 text-xs text-white">
-                      <strong className="text-[10px] text-slate-400 block mb-0.5">Sarah (Architect):</strong>
-                      “MeetMee's autonomous cloud bot stays connected even when you disconnect.”
-                    </div>
-                  </div>
+                <h3 className="text-xl font-bold text-white">Native Language Voice Assistant is Locked</h3>
+                <p className="text-xs text-slate-300 max-w-md mx-auto leading-relaxed">
+                  The <strong>Native Language Voice Assistant for General Use</strong> (Hindi, Tamil, Telugu, Spanish, French, English) is exclusive to the <strong>Yearly VIP Plan (₹1099/year)</strong>. Upgrade to interact with your personal assistant in your mother tongue for general productivity, prep, and inquiries.
+                </p>
+                <div className="pt-2 flex justify-center gap-3">
+                  <button
+                    onClick={() => handleSelectPlan('yearly')}
+                    className="rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-bold px-5 py-2.5 shadow-lg shadow-amber-500/25 transition-all"
+                  >
+                    Unlock with Yearly Plan (₹1099/yr)
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('pricing')}
+                    className="rounded-xl border border-slate-700 bg-slate-800 text-slate-200 text-xs font-semibold px-4 py-2.5 hover:bg-slate-700"
+                  >
+                    Compare Tiers
+                  </button>
                 </div>
-
-                {/* Panel 3 */}
-                <div className="rounded-xl border border-blue-500/30 bg-gradient-to-b from-blue-950/30 to-slate-950 p-4 flex flex-col justify-between">
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400">Panel 3: The Breakthrough</span>
-                    <div className="mt-2.5 h-28 rounded-lg bg-slate-900 border border-slate-800 p-2.5 text-[11px] text-slate-400 italic flex items-center text-center">
-                      Mentor asks question; Alex's floating HUD instantly pops up with 120ms p95 answer.
-                    </div>
-                    <div className="mt-3 rounded-lg bg-slate-950 border border-slate-800 p-2.5 text-xs text-white">
-                      <strong className="text-[10px] text-slate-400 block mb-0.5">Mentor (Harrison):</strong>
-                      “Alex, what was our agreed streaming latency benchmark?”
-                    </div>
-                  </div>
-                </div>
-
-                {/* Panel 4 */}
-                <div className="rounded-xl border border-emerald-500/30 bg-gradient-to-b from-emerald-950/30 to-slate-950 p-4 flex flex-col justify-between">
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Panel 4: The Victory</span>
-                    <div className="mt-2.5 h-28 rounded-lg bg-slate-900 border border-slate-800 p-2.5 text-[11px] text-slate-400 italic flex items-center text-center">
-                      Satisfied team receiving instant hint-style notes and listening to dual-host podcast.
-                    </div>
-                    <div className="mt-3 rounded-lg bg-slate-950 border border-slate-800 p-2.5 text-xs text-white">
-                      <strong className="text-[10px] text-slate-400 block mb-0.5">The Team:</strong>
-                      “Meeting adjourned! Summaries emailed, podcast generated, and action items locked.”
-                    </div>
-                  </div>
-                </div>
-
               </div>
-            </div>
+            ) : (
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-6">
+                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
+                  <div>
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <Mic className="h-5 w-5 text-emerald-400" />
+                      Native Language Voice Assistant for General Use
+                      <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full border border-amber-500/30">
+                        Yearly VIP Feature
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Hands-free conversational assistant answering questions, planning agendas, and managing follow-ups in your mother tongue.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Globe className="h-4 w-4 text-slate-400" />
+                    <span className="text-xs text-slate-400">Assistant Language:</span>
+                    <select
+                      value={assistantLang}
+                      onChange={(e) => setAssistantLang(e.target.value)}
+                      className="rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1 text-xs text-white focus:border-blue-500 focus:outline-none"
+                    >
+                      <option value="hi">Hindi (हिंदी)</option>
+                      <option value="ta">Tamil (தமிழ்)</option>
+                      <option value="te">Telugu (తెలుగు)</option>
+                      <option value="es">Spanish (Español)</option>
+                      <option value="en">English</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Assistant Chat Stream */}
+                <div className="rounded-xl border border-slate-800 bg-slate-950/80 p-4 space-y-3 max-h-80 overflow-y-auto">
+                  {assistantHistory.map((item, idx) => (
+                    <div 
+                      key={idx} 
+                      className={`flex gap-3 text-xs leading-relaxed ${item.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                    >
+                      {item.role === 'assistant' && (
+                        <div className="h-7 w-7 rounded-lg bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0">
+                          <Mic className="h-4 w-4" />
+                        </div>
+                      )}
+                      <div className={`rounded-xl p-3 max-w-[80%] ${
+                        item.role === 'user' 
+                          ? 'bg-blue-600 text-white' 
+                          : 'bg-slate-900 border border-slate-800 text-slate-200'
+                      }`}>
+                        {item.text}
+                      </div>
+                    </div>
+                  ))}
+
+                  {isAssistantSpeaking && (
+                    <div className="flex items-center gap-2 text-xs text-emerald-400 font-medium">
+                      <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping"></span>
+                      <span>Assistant is formulating speech response in your mother tongue...</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Assistant Query Input */}
+                <form onSubmit={handleAssistantSubmit} className="flex gap-2">
+                  <input
+                    type="text"
+                    value={assistantQuery}
+                    onChange={(e) => setAssistantQuery(e.target.value)}
+                    placeholder="Ask anything in your native language (e.g. अगली मीटिंग का एजेंडा क्या है?)..."
+                    className="flex-1 rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+                  />
+                  <button
+                    type="submit"
+                    className="rounded-xl bg-emerald-600 hover:bg-emerald-500 px-5 py-2.5 text-xs font-bold text-white shadow-lg shadow-emerald-600/25 transition-all flex items-center gap-1.5"
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                    Speak / Send
+                  </button>
+                </form>
+              </div>
+            )
           )}
 
         </div>
@@ -1094,15 +1590,17 @@ export default function App() {
             <div>
               <h3 className="text-sm font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
                 <ShieldCheck className="h-4 w-4 text-emerald-400" />
-                System Retention, User Presence &amp; Privacy Policies
+                System Retention, User Presence &amp; Subscription Policies
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                Configure your persistent online identity and automated monthly cleanup policies.
+                Configure your persistent online identity, automated monthly cleanup policies, and current plan tier.
               </p>
             </div>
-            <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/80 border border-emerald-500/30 px-2.5 py-1 rounded-full">
-              Engine Status: Active &amp; Enforced
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/80 border border-emerald-500/30 px-2.5 py-1 rounded-full">
+                Active Tier: {userPlan.toUpperCase()}
+              </span>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5 text-xs">
@@ -1147,32 +1645,26 @@ export default function App() {
               </div>
             </div>
 
-            {/* Control 3: Meeting History CRUD Summary */}
+            {/* Control 3: Subscription Overview */}
             <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-slate-200 flex items-center gap-1.5">
-                  <FileText className="h-4 w-4 text-blue-400" />
-                  Meeting Management Tools
+                  <Crown className="h-4 w-4 text-amber-400" />
+                  Subscription Status
                 </span>
-                <span className="text-[10px] text-blue-400 font-semibold">CRUD Active</span>
+                <span className="text-[10px] text-amber-400 font-semibold uppercase">{userPlan}</span>
               </div>
               <p className="text-slate-400 leading-relaxed">
-                Manage all recorded sessions directly:
+                {userPlan === 'free' && "Free Tier: 3 meetings allowance. Comics & Podcasts locked."}
+                {userPlan === 'monthly' && "Monthly Plan: ₹99/mo. 100 meetings + 4-Panel Comics unlocked."}
+                {userPlan === 'yearly' && "Yearly Plan: ₹1099/yr. Unlimited meetings + Podcasts + Native Voice AI."}
               </p>
-              <ul className="space-y-1 text-slate-300 text-[11px]">
-                <li className="flex items-center gap-1.5">
-                  <Edit3 className="h-3 w-3 text-blue-400" />
-                  <strong>Rename:</strong> Change title anytime.
-                </li>
-                <li className="flex items-center gap-1.5">
-                  <Bookmark className="h-3 w-3 text-emerald-400" />
-                  <strong>Save Permanently:</strong> Protect from auto-purge.
-                </li>
-                <li className="flex items-center gap-1.5">
-                  <Trash2 className="h-3 w-3 text-rose-400" />
-                  <strong>Delete:</strong> Erase meeting immediately.
-                </li>
-              </ul>
+              <button
+                onClick={() => setActiveTab('pricing')}
+                className="w-full mt-1 rounded-lg bg-blue-600/20 border border-blue-500/30 py-1 text-[11px] font-semibold text-blue-300 hover:bg-blue-600 hover:text-white transition-all text-center"
+              >
+                Manage / Switch Plan →
+              </button>
             </div>
 
           </div>
@@ -1180,7 +1672,7 @@ export default function App() {
 
       </main>
 
-      {/* Footer (No GitHub Button) */}
+      {/* Footer */}
       <footer className="border-t border-slate-800 bg-slate-950 py-6 text-center text-xs text-slate-500">
         MeetMee Corporate Meeting Intelligence Platform • Autonomous Bot Ingestion &amp; Persistent Presence
       </footer>

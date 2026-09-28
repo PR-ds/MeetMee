@@ -168,6 +168,29 @@ docker-compose up -d
 
 ---
 
+## 💎 Subscription & Pricing Tiers
+
+MeetMee offers flexible subscription tiers tailored for individual professionals, students, and corporate teams:
+
+| Tier | Price | Meeting Allowance | Included Capabilities & Restrictions |
+|---|---|---|---|
+| **Free Tier** | **₹0** | **3 Meetings Total** | • Autonomous Bot Attendance & Diarization<br>• Real-Time Mentor Q&A Pop-up HUD<br>• Post-Meeting Hint-Style Email Summaries<br>❌ *4-Panel Comic Generator Locked*<br>❌ *Multilingual Podcast Engine Locked* |
+| **Monthly Plan** | **₹99 / month** | **Up to 100 Meetings / mo** | • Everything in Free Tier<br>• **✅ 4-Panel Visual Comic Strip Generator UNLOCKED**<br>• Up to 100 meetings recorded & transcribed per month<br>• Monthly History Management (with permanent save)<br>❌ *Multilingual Podcast Engine Locked* |
+| **Yearly Plan** | **₹1,099 / year** | **Unlimited Meetings** | • Everything in Monthly Plan<br>• **✅ Unlimited Meeting Attendance**<br>• **✅ NotebookLM Multilingual Podcast Engine UNLOCKED**<br>• **🌟 NEW: Native Language Voice Assistant for General Use** (Hindi, Tamil, Telugu, Spanish, French, English)<br>• Always-Online Virtual Cloud Presence Daemon<br>• Priority GPU Processing Queue |
+
+---
+
+## 🛡️ Retention Policies & User Presence Engine
+
+1. **Virtual Cloud Presence (Always Online)**:
+   - MeetMee's cloud daemon maintains the user's participant seat marked as **"Online & Active"** across Zoom, Microsoft Teams, and Google Meet even if local Wi-Fi drops, battery dies, or the laptop lid is closed.
+2. **Monthly Meeting Auto-Purge Policy**:
+   - All recorded meetings are automatically purged once a month (30-day retention cycle) to keep storage efficient.
+   - Users can click **"Save Permanently"** on any meeting record to protect it forever from automated cleanup.
+   - Full CRUD actions available per meeting: **Rename Title**, **Save Permanently**, and **Delete**.
+
+---
+
 ## 🔒 Privacy & Compliance
 - **Consent Announcement**: Autonomous bots announce their presence in the meeting chat and state the user on whose behalf they are recording.
 - **Data Retention**: Raw audio files are auto-purged within 14 days by default.
