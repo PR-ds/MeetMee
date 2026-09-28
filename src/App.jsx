@@ -9,7 +9,6 @@ import {
   Palette, 
   FileText, 
   WifiOff, 
-  ArrowRight, 
   Copy, 
   Check, 
   Send, 
@@ -20,20 +19,37 @@ import {
   Mail, 
   Clock, 
   Lightbulb, 
-  ExternalLink,
-  ShieldCheck,
-  MessageSquareQuote,
-  Download,
-  Bot
+  ShieldCheck, 
+  Download, 
+  Bot, 
+  X, 
+  Bookmark, 
+  BookmarkCheck, 
+  Edit3, 
+  Trash2, 
+  RotateCcw, 
+  UserCheck, 
+  Calendar,
+  AlertTriangle
 } from 'lucide-react';
 
 export default function App() {
   const [meetingUrl, setMeetingUrl] = useState('');
   const [meetingTitle, setMeetingTitle] = useState('');
   const [isBotJoined, setIsBotJoined] = useState(false);
-  const [activeTab, setActiveTab] = useState('hud'); // 'hud', 'notes', 'podcast', 'comic', 'bot'
+  const [activeTab, setActiveTab] = useState('notes'); // 'notes', 'podcast', 'comic', 'history'
   
-  // Real-time HUD states
+  // Always-Online Cloud Presence State
+  const [isCloudPresenceActive, setIsCloudPresenceActive] = useState(true);
+  const [userProfile] = useState({
+    name: "Alex Chen",
+    id: "mm-usr-9842",
+    email: "alex.chen@meetmee.internal",
+    role: "Senior Engineer & Student"
+  });
+
+  // Real-time HUD Pop-up state (ONLY APPEARS WHEN MENTOR/HOST ASKS A QUESTION)
+  const [isPopupVisible, setIsPopupVisible] = useState(false);
   const [copied, setCopied] = useState(false);
   const [hudPulse, setHudPulse] = useState(false);
   const [activeMentorQuestion, setActiveMentorQuestion] = useState(
@@ -52,6 +68,51 @@ export default function App() {
   const [podcastLang, setPodcastLang] = useState('en');
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [audioProgress, setAudioProgress] = useState(42);
+
+  // Meeting History with Monthly Auto-Erase & Permanent Save
+  const initialMeetings = [
+    {
+      id: "mtg-101",
+      title: "Sprint Architecture & Q3 Review",
+      date: "September 28, 2026",
+      duration: "45 mins",
+      platform: "Google Meet",
+      isPermanent: true, // Saved permanently by user
+      daysUntilPurge: null
+    },
+    {
+      id: "mtg-102",
+      title: "Weekly Engineering Standup & Blocker Sync",
+      date: "September 20, 2026",
+      duration: "25 mins",
+      platform: "Zoom",
+      isPermanent: false, // Unsaved: eligible for monthly erase
+      daysUntilPurge: 12
+    },
+    {
+      id: "mtg-103",
+      title: "Product Roadmap & AI Strategy Session",
+      date: "September 12, 2026",
+      duration: "50 mins",
+      platform: "Microsoft Teams",
+      isPermanent: false, // Unsaved
+      daysUntilPurge: 4
+    },
+    {
+      id: "mtg-104",
+      title: "Old Vendor Presentation & Demo",
+      date: "August 28, 2026",
+      duration: "30 mins",
+      platform: "Google Meet",
+      isPermanent: false, // Over 30 days old: will be wiped in monthly cleanup
+      daysUntilPurge: 1
+    }
+  ];
+
+  const [meetings, setMeetings] = useState(initialMeetings);
+  const [editingMeetingId, setEditingMeetingId] = useState(null);
+  const [editTitleInput, setEditTitleInput] = useState('');
+  const [monthlyPurgeMessage, setMonthlyPurgeMessage] = useState(null);
 
   // Platform detector helper
   const detectPlatform = (url) => {
@@ -92,32 +153,90 @@ export default function App() {
     setIsBotJoined(true);
   };
 
-  const handleTestQuestion = (e) => {
-    e.preventDefault();
-    if (!customQuestionInput.trim()) return;
+  // Trigger Pop-up ONLY when mentor asks question
+  const triggerMentorQuestionPopup = (questionText) => {
+    const q = questionText.trim();
+    if (!q) return;
 
-    setHudPulse(true);
-    playChime();
-    setActiveMentorQuestion(customQuestionInput);
+    setActiveMentorQuestion(q);
 
-    // Contextual answer simulation
-    const q = customQuestionInput.toLowerCase();
-    if (q.includes('schema') || q.includes('database')) {
+    // Contextual answer synthesis
+    const qLower = q.toLowerCase();
+    if (qLower.includes('schema') || qLower.includes('database')) {
       setSuggestedAnswer("PostgreSQL 16 with pgvector extension for unified relational state and sub-second cosine embeddings.");
       setCitation("Discussed at 08:15 during Database Architecture review");
-    } else if (q.includes('bot') || q.includes('offline')) {
+    } else if (qLower.includes('bot') || qLower.includes('offline')) {
       setSuggestedAnswer("The bot runs on independent server infrastructure. If you disconnect, it stays connected and records in the cloud.");
       setCitation("Discussed at 04:30 during Resilience review");
-    } else if (q.includes('podcast') || q.includes('language')) {
+    } else if (qLower.includes('podcast') || qLower.includes('language')) {
       setSuggestedAnswer("NotebookLM-style dual-host script synthesized in the user's mother tongue via ElevenLabs Multilingual v2.");
       setCitation("Discussed at 18:20 during Media Pipeline review");
+    } else if (qLower.includes('save') || qLower.includes('history') || qLower.includes('erase')) {
+      setSuggestedAnswer("Unsaved meetings are auto-erased monthly after 30 days. Clicking 'Save Permanently' protects the meeting forever.");
+      setCitation("Configured in MeetMee Retention Engine");
     } else {
-      setSuggestedAnswer(`Key context: Regarding '${customQuestionInput}', the team aligned on sub-2s response targets and automated email summaries.`);
+      setSuggestedAnswer(`Grounded Answer: Regarding '${q}', the team aligned on sub-2s response targets and automated email summaries.`);
       setCitation("Extracted from recent meeting discussion");
     }
 
-    setCustomQuestionInput('');
-    setTimeout(() => setHudPulse(false), 3000);
+    // MAKE POPUP APPEAR NOW
+    setIsPopupVisible(true);
+    setHudPulse(true);
+    playChime();
+    setTimeout(() => setHudPulse(false), 2500);
+  };
+
+  // Meeting History Action: Toggle Save Permanently
+  const handleToggleSaveMeeting = (id) => {
+    setMeetings(prev => prev.map(m => {
+      if (m.id === id) {
+        const nextPermanent = !m.isPermanent;
+        return {
+          ...m,
+          isPermanent: nextPermanent,
+          daysUntilPurge: nextPermanent ? null : 30
+        };
+      }
+      return m;
+    }));
+  };
+
+  // Meeting History Action: Start Rename
+  const handleStartRename = (meeting) => {
+    setEditingMeetingId(meeting.id);
+    setEditTitleInput(meeting.title);
+  };
+
+  // Meeting History Action: Save Rename
+  const handleSaveRename = (id) => {
+    if (!editTitleInput.trim()) return;
+    setMeetings(prev => prev.map(m => m.id === id ? { ...m, title: editTitleInput.trim() } : m));
+    setEditingMeetingId(null);
+  };
+
+  // Meeting History Action: Delete
+  const handleDeleteMeeting = (id) => {
+    setMeetings(prev => prev.filter(m => m.id !== id));
+  };
+
+  // Monthly Auto-Purge Execution
+  const handleRunMonthlyPurge = () => {
+    const unsavedCount = meetings.filter(m => !m.isPermanent).length;
+    const permanentCount = meetings.filter(m => m.isPermanent).length;
+
+    // Erase all unsaved meetings
+    setMeetings(prev => prev.filter(m => m.isPermanent));
+
+    setMonthlyPurgeMessage(
+      `Monthly Auto-Erase complete: ${unsavedCount} unsaved meeting(s) erased. ${permanentCount} permanently saved meeting(s) preserved!`
+    );
+    setTimeout(() => setMonthlyPurgeMessage(null), 6000);
+  };
+
+  const handleResetDemoMeetings = () => {
+    setMeetings(initialMeetings);
+    setMonthlyPurgeMessage("Reset meeting history to original sample dataset.");
+    setTimeout(() => setMonthlyPurgeMessage(null), 4000);
   };
 
   const podcastScripts = {
@@ -151,9 +270,12 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
-      {/* Top Navigation */}
-      <header className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950/80 backdrop-blur-md">
+      
+      {/* Top Header with User Profile (Always-Online Virtual Presence) */}
+      <header className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950/85 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          
+          {/* Logo */}
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/25">
               <Radio className="h-5 w-5 text-white animate-pulse" />
@@ -163,25 +285,54 @@ export default function App() {
                 Meet<span className="text-blue-500">Mee</span>
               </span>
               <span className="ml-2 rounded-full bg-blue-500/10 px-2.5 py-0.5 text-[10px] font-semibold text-blue-400 border border-blue-500/20">
-                Live Prototype
+                Enterprise AI
               </span>
             </div>
           </div>
 
+          {/* User Profile & Always-Online Presence Indicator */}
           <div className="flex items-center gap-4">
-            <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-400">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping"></span>
-              Autonomous Cloud Bot: Ready
-            </span>
-            <a
-              href="https://github.com/PR-ds/MeetMee.git"
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-800 hover:text-white transition-colors"
+            <div className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/90 px-3.5 py-1.5 shadow-sm">
+              <div className="relative">
+                <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-500 flex items-center justify-center font-bold text-xs text-white">
+                  AC
+                </div>
+                {isCloudPresenceActive && (
+                  <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border-2 border-slate-900"></span>
+                  </span>
+                )}
+              </div>
+              <div className="text-left">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-semibold text-slate-200">{userProfile.name}</span>
+                  <span className="text-[10px] font-mono text-slate-400">({userProfile.id})</span>
+                </div>
+                <div className="flex items-center gap-1 text-[10px]">
+                  {isCloudPresenceActive ? (
+                    <span className="text-emerald-400 font-medium flex items-center gap-1">
+                      <UserCheck className="h-3 w-3" />
+                      Always Online (Cloud Presence Engine)
+                    </span>
+                  ) : (
+                    <span className="text-slate-400">Presence: Offline</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setIsCloudPresenceActive(!isCloudPresenceActive)}
+              className={`rounded-lg px-2.5 py-1.5 text-xs font-medium border transition-colors ${
+                isCloudPresenceActive 
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20' 
+                  : 'border-slate-700 bg-slate-800 text-slate-400 hover:text-white'
+              }`}
+              title="Cloud Presence keeps your participant profile 'Online' in meetings even if you lose Wi-Fi"
             >
-              <ExternalLink className="h-3.5 w-3.5 text-slate-400" />
-              GitHub Repo
-            </a>
+              {isCloudPresenceActive ? "Virtual Online: ON" : "Virtual Online: OFF"}
+            </button>
           </div>
         </div>
       </header>
@@ -197,13 +348,13 @@ export default function App() {
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-xs font-semibold text-blue-400 mb-3">
                 <Sparkles className="h-3.5 w-3.5" />
-                AI Corporate Meeting Intelligence Platform
+                Persistent AI Meeting Attendance & Transformation
               </div>
               <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white leading-tight">
-                Never miss an answer. Never lose a meeting note.
+                Autonomous Meeting Intelligence
               </h1>
               <p className="mt-2 text-sm sm:text-base text-slate-300">
-                Paste your meeting link below. MeetMee attends as a dedicated AI participant, alerts you when your mentor calls your name, delivers real-time answers, and translates everything into podcasts and comics.
+                Paste your meeting link. MeetMee stays in the call even if you disconnect, maintains your online status, and brings up a context-aware answer pop-up <strong>strictly when your mentor or host asks a question</strong>.
               </p>
             </div>
 
@@ -262,62 +413,145 @@ export default function App() {
 
               <div className="flex items-center gap-2 text-[11px] text-slate-500 pt-1">
                 <ShieldCheck className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-                <span>Runs on independent server workers. If your computer sleeps or loses Wi-Fi, the bot continues recording unabated.</span>
+                <span>Cloud Presence Active: Your avatar stays marked &quot;Online&quot; in the meeting even if your local machine sleeps.</span>
               </div>
             </form>
           </div>
 
-          {/* Right Column: Floating Real-Time HUD Companion */}
-          <div className="lg:col-span-5 space-y-3">
-            <div className="flex items-center justify-between text-xs font-semibold text-slate-400 uppercase tracking-wider">
-              <span className="flex items-center gap-2">
-                <Radio className="h-3.5 w-3.5 text-emerald-400 animate-pulse" />
-                Live Floating Companion HUD
-              </span>
-              <span className="text-[10px] text-slate-500">Feature 2 & 4</span>
-            </div>
-
-            {/* Live HUD Card */}
-            <div className={`rounded-2xl border border-blue-500/40 bg-slate-900/95 p-5 text-white shadow-2xl backdrop-blur-xl transition-all duration-300 ${hudPulse ? 'ring-4 ring-blue-500/60 shadow-blue-500/30' : ''}`}>
+          {/* Right Column: Audio Listener & Pop-Up Trigger Simulator */}
+          <div className="lg:col-span-5 space-y-4">
+            
+            {/* Background Audio Listener Status Card */}
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                 <div className="flex items-center gap-2">
                   <span className="relative flex h-2.5 w-2.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500"></span>
                   </span>
-                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                    MeetMee Live HUD
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                    Background Audio Monitor
                   </span>
                 </div>
-                <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] font-mono text-slate-400">
-                  Always-on-Top
+                <span className="text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded">
+                  Pop-up: {isPopupVisible ? "OPEN" : "HIDDEN"}
                 </span>
               </div>
 
-              <div className="mt-2.5 text-[11px] text-slate-400">
-                Active Session: <span className="font-medium text-slate-200">{meetingTitle || "Architecture Review & Q3 Sprint"}</span>
+              <div className="mt-3 text-xs text-slate-300 leading-relaxed">
+                The Q&amp;A pop-up window is <strong>hidden by default</strong> to prevent screen clutter. It will <strong>automatically pop up only when your mentor or host asks a question</strong> or addresses your name.
               </div>
 
-              {/* Mentor Mention Alert */}
-              <div className="mt-3.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
-                <div className="flex items-center gap-2 text-amber-400">
-                  <Bell className="h-3.5 w-3.5 animate-bounce" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider">
-                    Mentor Addressed You Directly
+              {/* Quick simulation buttons */}
+              <div className="mt-4 space-y-2">
+                <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                  Simulate Mentor Asking a Question:
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <button
+                    onClick={() => triggerMentorQuestionPopup("Alex! Could you clarify what our streaming latency SLA is?")}
+                    className="text-left rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-blue-600/20 hover:border-blue-500/40 p-2 text-xs text-slate-200 transition-all flex items-center justify-between"
+                  >
+                    <span>&ldquo;Alex, what is our latency SLA?&rdquo;</span>
+                    <span className="text-[10px] font-semibold text-blue-400">Trigger Pop-up →</span>
+                  </button>
+                  <button
+                    onClick={() => triggerMentorQuestionPopup("Alex, what database schema did we choose for vector search?")}
+                    className="text-left rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-blue-600/20 hover:border-blue-500/40 p-2 text-xs text-slate-200 transition-all flex items-center justify-between"
+                  >
+                    <span>&ldquo;Alex, what database schema did we choose?&rdquo;</span>
+                    <span className="text-[10px] font-semibold text-blue-400">Trigger Pop-up →</span>
+                  </button>
+                  <button
+                    onClick={() => triggerMentorQuestionPopup("Alex, how does our monthly meeting erase policy work?")}
+                    className="text-left rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-blue-600/20 hover:border-blue-500/40 p-2 text-xs text-slate-200 transition-all flex items-center justify-between"
+                  >
+                    <span>&ldquo;Alex, how does monthly meeting erase work?&rdquo;</span>
+                    <span className="text-[10px] font-semibold text-blue-400">Trigger Pop-up →</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Custom question input */}
+              <form 
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (customQuestionInput.trim()) {
+                    triggerMentorQuestionPopup(customQuestionInput);
+                    setCustomQuestionInput('');
+                  }
+                }}
+                className="mt-3.5 pt-3 border-t border-slate-800 flex gap-2"
+              >
+                <input
+                  type="text"
+                  value={customQuestionInput}
+                  onChange={(e) => setCustomQuestionInput(e.target.value)}
+                  placeholder="Or type any mentor question..."
+                  className="flex-1 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 transition-all shrink-0 flex items-center gap-1"
+                >
+                  <Send className="h-3 w-3" />
+                  Ask
+                </button>
+              </form>
+            </div>
+
+          </div>
+
+        </div>
+
+        {/* ========================================================================= */}
+        {/* POP-UP WINDOW: APPEARS ONLY WHEN MENTOR ASKS A QUESTION */}
+        {/* ========================================================================= */}
+        {isPopupVisible && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+            <div 
+              className={`w-full max-w-lg rounded-2xl border-2 border-blue-500 bg-slate-900/95 p-5 text-white shadow-2xl backdrop-blur-xl transition-all ${
+                hudPulse ? 'ring-8 ring-blue-500/50 shadow-blue-500/50 scale-102' : ''
+              }`}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+                  </span>
+                  <span className="text-xs font-bold uppercase tracking-wider text-amber-400">
+                    ⚠️ MENTOR QUESTION DETECTED (Live Alert)
                   </span>
                 </div>
-                <p className="mt-1 text-xs font-medium text-amber-100">
+                <button
+                  onClick={() => setIsPopupVisible(false)}
+                  className="rounded-lg p-1 text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                  title="Close Pop-up"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Mentor Question Banner */}
+              <div className="mt-3.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+                <div className="flex items-center gap-2 text-amber-400 text-xs font-semibold">
+                  <Bell className="h-4 w-4 animate-bounce" />
+                  <span>Host / Mentor Addressed You Directly:</span>
+                </div>
+                <p className="mt-1 text-sm font-semibold text-amber-100">
                   &ldquo;{activeMentorQuestion}&rdquo;
                 </p>
               </div>
 
               {/* Context-Aware Suggested Answer */}
-              <div className="mt-3.5 rounded-xl border border-blue-500/30 bg-blue-950/40 p-3.5">
+              <div className="mt-3.5 rounded-xl border border-blue-500/30 bg-blue-950/40 p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5 text-blue-400">
-                    <Sparkles className="h-3.5 w-3.5" />
-                    <span className="text-[11px] font-bold uppercase tracking-wider">
-                      Suggested Answer (Sub-2s RAG)
+                    <Sparkles className="h-4 w-4" />
+                    <span className="text-xs font-bold uppercase tracking-wider">
+                      Context-Aware Answer (Sub-2s RAG)
                     </span>
                   </div>
                   <span className="text-[10px] text-blue-300 bg-blue-900/50 px-2 py-0.5 rounded-full border border-blue-500/20">
@@ -325,59 +559,55 @@ export default function App() {
                   </span>
                 </div>
 
-                <p className="mt-2 text-xs leading-relaxed text-slate-100 font-normal">
+                <p className="mt-2 text-sm leading-relaxed text-slate-100 font-normal">
                   {suggestedAnswer}
                 </p>
 
-                <div className="mt-2.5 flex items-center justify-between border-t border-blue-900/50 pt-2 text-[11px] text-slate-400">
-                  <span className="italic truncate max-w-[200px] text-slate-400">{citation}</span>
-                  <button
-                    onClick={handleCopyAnswer}
-                    className="flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-blue-500 active:scale-95"
-                  >
-                    {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                    {copied ? "Copied" : "Copy Answer"}
-                  </button>
+                <div className="mt-3 flex items-center justify-between border-t border-blue-900/50 pt-2.5 text-xs text-slate-400">
+                  <span className="italic truncate max-w-[240px] text-slate-400">{citation}</span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleCopyAnswer}
+                      className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-blue-500 active:scale-95"
+                    >
+                      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                      {copied ? "Copied!" : "Copy Answer"}
+                    </button>
+                    <button
+                      onClick={() => setIsPopupVisible(false)}
+                      className="rounded-lg bg-slate-800 border border-slate-700 px-3 py-1 text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-700"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {/* Interactive Simulator */}
-              <form onSubmit={handleTestQuestion} className="mt-3.5 border-t border-slate-800 pt-3">
-                <div className="text-[11px] font-medium text-slate-400 mb-1 flex items-center justify-between">
-                  <span>🧪 Test Mentor Question:</span>
-                  <span className="text-[10px] text-blue-400">Type below to test live HUD chime</span>
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={customQuestionInput}
-                    onChange={(e) => setCustomQuestionInput(e.target.value)}
-                    placeholder="e.g. Alex, what database schema did we choose?"
-                    className="flex-1 rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
-                  />
-                  <button
-                    type="submit"
-                    className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 transition-all"
-                  >
-                    <Send className="h-3 w-3" />
-                    Ask
-                  </button>
-                </div>
-              </form>
+              <div className="mt-3 text-[11px] text-slate-500 text-center">
+                This pop-up only appears when a mentor asks a question. Press Dismiss or ✕ to close.
+              </div>
             </div>
           </div>
-
-        </div>
+        )}
 
         {/* Feature Navigation Tabs */}
         <div className="border-t border-slate-800 pt-8">
           <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
             <div>
-              <h2 className="text-xl font-bold text-white">Post-Meeting Intelligence & Artifacts</h2>
-              <p className="text-xs text-slate-400 mt-0.5">Explore the automated transformations generated immediately upon meeting conclusion.</p>
+              <h2 className="text-xl font-bold text-white">Meeting Intelligence &amp; Retention Center</h2>
+              <p className="text-xs text-slate-400 mt-0.5">Explore your meeting history, retention policies, summaries, and transformations.</p>
             </div>
 
             <div className="flex rounded-xl bg-slate-900 p-1 border border-slate-800">
+              <button
+                onClick={() => setActiveTab('history')}
+                className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all ${
+                  activeTab === 'history' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Calendar className="h-3.5 w-3.5" />
+                Meeting History ({meetings.length})
+              </button>
               <button
                 onClick={() => setActiveTab('notes')}
                 className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all ${
@@ -385,7 +615,7 @@ export default function App() {
                 }`}
               >
                 <FileText className="h-3.5 w-3.5" />
-                Hint Notes & Email
+                Hint Notes &amp; Email
               </button>
               <button
                 onClick={() => setActiveTab('podcast')}
@@ -408,6 +638,160 @@ export default function App() {
             </div>
           </div>
 
+          {/* ========================================================================= */}
+          {/* TAB: MEETING HISTORY (WITH MONTHLY ERASE, SAVE PERMANENTLY, RENAME, DELETE) */}
+          {/* ========================================================================= */}
+          {activeTab === 'history' && (
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-6">
+              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <Calendar className="h-5 w-5 text-blue-400" />
+                    Meeting History &amp; Monthly Auto-Purge Manager
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Meetings auto-erase once a month after 30 days unless you click <strong>Save Permanently</strong>. Every meeting supports Rename, Save, and Delete.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleRunMonthlyPurge}
+                    className="flex items-center gap-1.5 rounded-xl bg-rose-600/20 border border-rose-500/30 px-3.5 py-1.5 text-xs font-semibold text-rose-300 hover:bg-rose-600 hover:text-white transition-all"
+                    title="Simulate monthly auto-erase: purges all unsaved meetings"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Run Monthly Auto-Purge Now
+                  </button>
+                  <button
+                    onClick={handleResetDemoMeetings}
+                    className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700"
+                    title="Reset demo meetings"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Reset
+                  </button>
+                </div>
+              </div>
+
+              {monthlyPurgeMessage && (
+                <div className="rounded-xl border border-blue-500/40 bg-blue-950/40 p-3 text-xs text-blue-300 flex items-center gap-2 animate-in fade-in">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                  <span>{monthlyPurgeMessage}</span>
+                </div>
+              )}
+
+              {/* Meeting List with Rename, Save Permanently, and Delete */}
+              <div className="space-y-3">
+                {meetings.length === 0 ? (
+                  <div className="rounded-xl border border-slate-800 p-8 text-center text-sm text-slate-500">
+                    No meetings found. Click &quot;Reset&quot; above to reload sample meetings.
+                  </div>
+                ) : (
+                  meetings.map(meeting => (
+                    <div 
+                      key={meeting.id} 
+                      className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 hover:border-slate-700 transition-all flex flex-wrap items-center justify-between gap-4"
+                    >
+                      {/* Left: Meeting Info or Rename Field */}
+                      <div className="flex-1 min-w-[280px]">
+                        {editingMeetingId === meeting.id ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={editTitleInput}
+                              onChange={(e) => setEditTitleInput(e.target.value)}
+                              className="rounded-lg border border-blue-500 bg-slate-900 px-3 py-1 text-sm text-white focus:outline-none flex-1"
+                              autoFocus
+                            />
+                            <button
+                              onClick={() => handleSaveRename(meeting.id)}
+                              className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-500"
+                            >
+                              Save Title
+                            </button>
+                            <button
+                              onClick={() => setEditingMeetingId(null)}
+                              className="rounded-lg bg-slate-800 px-2 py-1 text-xs text-slate-400 hover:text-white"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <div>
+                            <div className="flex items-center gap-2.5">
+                              <h4 className="text-sm font-bold text-white">{meeting.title}</h4>
+                              <span className="text-[10px] font-semibold bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full border border-slate-700">
+                                {meeting.platform}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3 text-xs text-slate-400 mt-1">
+                              <span>{meeting.date}</span>
+                              <span>•</span>
+                              <span>{meeting.duration}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Middle: Retention Status Badge */}
+                      <div className="flex items-center">
+                        {meeting.isPermanent ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 px-3 py-1 text-xs font-semibold text-emerald-400">
+                            <BookmarkCheck className="h-3.5 w-3.5" />
+                            Saved Permanently (Protected)
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 px-3 py-1 text-xs font-medium text-amber-300">
+                            <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
+                            Auto-purges in monthly cleanup ({meeting.daysUntilPurge}d left)
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Right: Actions (Rename, Save Permanently, Delete) */}
+                      <div className="flex items-center gap-2">
+                        {/* Save Permanently Button */}
+                        <button
+                          onClick={() => handleToggleSaveMeeting(meeting.id)}
+                          className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold border transition-all ${
+                            meeting.isPermanent
+                              ? 'bg-emerald-600/20 border-emerald-500/40 text-emerald-300 hover:bg-emerald-600 hover:text-white'
+                              : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-blue-600 hover:text-white hover:border-blue-500'
+                          }`}
+                          title={meeting.isPermanent ? "Unsave (Allow monthly erase)" : "Save permanently to protect from monthly cleanup"}
+                        >
+                          {meeting.isPermanent ? <BookmarkCheck className="h-3.5 w-3.5 text-emerald-400" /> : <Bookmark className="h-3.5 w-3.5" />}
+                          {meeting.isPermanent ? "Saved" : "Save Permanently"}
+                        </button>
+
+                        {/* Rename Button */}
+                        <button
+                          onClick={() => handleStartRename(meeting)}
+                          className="flex items-center gap-1 rounded-lg bg-slate-800 border border-slate-700 px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:bg-slate-700 hover:text-white transition-all"
+                          title="Rename meeting title"
+                        >
+                          <Edit3 className="h-3.5 w-3.5 text-slate-400" />
+                          Rename
+                        </button>
+
+                        {/* Delete Button */}
+                        <button
+                          onClick={() => handleDeleteMeeting(meeting.id)}
+                          className="flex items-center gap-1 rounded-lg bg-rose-950/40 border border-rose-800/40 px-2.5 py-1.5 text-xs font-medium text-rose-300 hover:bg-rose-600 hover:text-white transition-all"
+                          title="Delete meeting immediately"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
           {/* TAB 1: Hint Notes */}
           {activeTab === 'notes' && (
             <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-6">
@@ -415,7 +799,7 @@ export default function App() {
                 <div>
                   <h3 className="text-base font-bold text-white flex items-center gap-2">
                     <FileText className="h-5 w-5 text-blue-400" />
-                    Feature 3: Hint-Style Notes & Automated Email Delivery
+                    Feature 3: Hint-Style Notes &amp; Automated Email Delivery
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
                     Concise concept anchors and action matrix auto-dispatched to user email post-call.
@@ -429,7 +813,7 @@ export default function App() {
                   className="flex items-center gap-2 rounded-xl bg-blue-600/20 border border-blue-500/30 px-3.5 py-1.5 text-xs font-semibold text-blue-400 hover:bg-blue-600 hover:text-white transition-all"
                 >
                   {emailSent ? <Check className="h-3.5 w-3.5" /> : <Mail className="h-3.5 w-3.5" />}
-                  {emailSent ? "Dispatched to developer@example.com!" : "Dispatch Email Now"}
+                  {emailSent ? "Dispatched to alex.chen@meetmee.internal!" : "Dispatch Email Now"}
                 </button>
               </div>
 
@@ -445,7 +829,7 @@ export default function App() {
                   </li>
                   <li className="flex items-start gap-2">
                     <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
-                    <span>Sub-two-second latency SLA benchmarked and achieved for real-time mentor Q&A HUD.</span>
+                    <span>Sub-two-second latency SLA benchmarked and achieved for real-time mentor Q&amp;A HUD.</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
@@ -457,7 +841,7 @@ export default function App() {
               {/* Concept Anchors */}
               <div>
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2 mb-2">
-                  💡 Concept Anchors & Hints
+                  💡 Concept Anchors &amp; Hints
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5">
@@ -481,10 +865,10 @@ export default function App() {
                   <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5">
                     <span className="text-xs font-semibold text-blue-400 flex items-center gap-1.5">
                       <Lightbulb className="h-3.5 w-3.5 text-amber-400" />
-                      Grounded RAG Threshold
+                      Monthly Retention Rule
                     </span>
                     <p className="mt-1 text-xs text-slate-300 leading-relaxed">
-                      Require >= 0.72 cosine similarity on transcript vector chunks to strictly eliminate LLM hallucination in live answers.
+                      Unsaved meetings are auto-erased every 30 days. Clicking Save Permanently guarantees permanent persistence.
                     </p>
                   </div>
                 </div>
@@ -493,7 +877,7 @@ export default function App() {
               {/* Action Matrix */}
               <div>
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2 mb-2">
-                  📋 Action Items & Ownership Matrix
+                  📋 Action Items &amp; Ownership Matrix
                 </h4>
                 <div className="overflow-hidden rounded-xl border border-slate-800">
                   <table className="w-full text-left text-xs">
@@ -701,11 +1085,104 @@ export default function App() {
           )}
 
         </div>
+
+        {/* ========================================================================= */}
+        {/* SEPARATE BOTTOM CONTROL & RETENTION POLICY BAR */}
+        {/* ========================================================================= */}
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
+            <div>
+              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                System Retention, User Presence &amp; Privacy Policies
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Configure your persistent online identity and automated monthly cleanup policies.
+              </p>
+            </div>
+            <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/80 border border-emerald-500/30 px-2.5 py-1 rounded-full">
+              Engine Status: Active &amp; Enforced
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 text-xs">
+            
+            {/* Control 1: Always Online Profile */}
+            <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-200 flex items-center gap-1.5">
+                  <UserCheck className="h-4 w-4 text-emerald-400" />
+                  Cloud Presence Daemon
+                </span>
+                <span className="text-[10px] text-emerald-400 font-semibold">Active</span>
+              </div>
+              <p className="text-slate-400 leading-relaxed">
+                Keeps your participant status marked &quot;Online&quot; across Zoom, Microsoft Teams, and Google Meet even if your local network disconnects or your laptop lid is closed.
+              </p>
+              <div className="pt-2 text-[11px] text-slate-500">
+                User ID: <span className="font-mono text-slate-300">{userProfile.id}</span>
+              </div>
+            </div>
+
+            {/* Control 2: Monthly Auto-Purge Policy */}
+            <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-200 flex items-center gap-1.5">
+                  <Calendar className="h-4 w-4 text-amber-400" />
+                  Monthly Auto-Erase Policy
+                </span>
+                <span className="text-[10px] text-amber-300 font-semibold">Every 30 Days</span>
+              </div>
+              <p className="text-slate-400 leading-relaxed">
+                All meeting history is automatically wiped clean once a month. To keep a meeting permanently, click the <strong>&quot;Save Permanently&quot;</strong> button on that record.
+              </p>
+              <div className="pt-2 flex items-center justify-between">
+                <span className="text-[11px] text-slate-400">Next purge in: <strong>12 days</strong></span>
+                <button
+                  onClick={handleRunMonthlyPurge}
+                  className="rounded bg-rose-900/40 border border-rose-700/50 px-2 py-0.5 text-[10px] font-semibold text-rose-300 hover:bg-rose-600 hover:text-white"
+                >
+                  Run Now
+                </button>
+              </div>
+            </div>
+
+            {/* Control 3: Meeting History CRUD Summary */}
+            <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-200 flex items-center gap-1.5">
+                  <FileText className="h-4 w-4 text-blue-400" />
+                  Meeting Management Tools
+                </span>
+                <span className="text-[10px] text-blue-400 font-semibold">CRUD Active</span>
+              </div>
+              <p className="text-slate-400 leading-relaxed">
+                Manage all recorded sessions directly:
+              </p>
+              <ul className="space-y-1 text-slate-300 text-[11px]">
+                <li className="flex items-center gap-1.5">
+                  <Edit3 className="h-3 w-3 text-blue-400" />
+                  <strong>Rename:</strong> Change title anytime.
+                </li>
+                <li className="flex items-center gap-1.5">
+                  <Bookmark className="h-3 w-3 text-emerald-400" />
+                  <strong>Save Permanently:</strong> Protect from auto-purge.
+                </li>
+                <li className="flex items-center gap-1.5">
+                  <Trash2 className="h-3 w-3 text-rose-400" />
+                  <strong>Delete:</strong> Erase meeting immediately.
+                </li>
+              </ul>
+            </div>
+
+          </div>
+        </section>
+
       </main>
 
-      {/* Footer */}
+      {/* Footer (No GitHub Button) */}
       <footer className="border-t border-slate-800 bg-slate-950 py-6 text-center text-xs text-slate-500">
-        MeetMee AI Meeting Intelligence Platform • Open Source on <a href="https://github.com/PR-ds/MeetMee.git" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">GitHub</a>
+        MeetMee Corporate Meeting Intelligence Platform • Autonomous Bot Ingestion &amp; Persistent Presence
       </footer>
     </div>
   );
