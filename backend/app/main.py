@@ -54,6 +54,7 @@ async def meeting_websocket_endpoint(websocket: WebSocket, meeting_id: str):
     except Exception:
         ws_manager.disconnect(meeting_id, websocket)
 
+@app.get("/health", tags=["System"])
 @app.get("/healthz", tags=["System"])
 async def health_check():
     return {
