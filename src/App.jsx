@@ -61,6 +61,17 @@ import {
 } from 'lucide-react';
 import paymentQrImage from './assets/payment_qr.jpg';
 
+// =========================================================================
+// DESIGNATED VIP SUBSCRIPTION ACCOUNT (UNLIMITED ACCESS)
+// =========================================================================
+export const VIP_ACCOUNT_CONFIG = {
+  name: "ABIRAMI P",
+  email: "prabhuragul97892@gmail.com",
+  password: "ragul@2007",
+  plan: "yearly",
+  role: "VIP Executive Member"
+};
+
 export default function App() {
   // =========================================================================
   // PAYMENT & QR MODAL STATE
@@ -105,20 +116,65 @@ export default function App() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // Keep registered profile & plan, but ensure all meetings & newly added dummy records are clean
-          return parsed.map(u => ({
-            ...u,
-            meetings: Array.isArray(u.meetings) ? u.meetings : [],
-            meetingsCount: typeof u.meetingsCount === 'number' ? u.meetingsCount : 0,
-            comicGenerationsUsed: typeof u.comicGenerationsUsed === 'number' ? u.comicGenerationsUsed : 0,
-            assistantHistory: Array.isArray(u.assistantHistory) ? u.assistantHistory : []
-          }));
+          const mapped = parsed.map(u => {
+            const isVip = u.email?.toLowerCase() === VIP_ACCOUNT_CONFIG.email.toLowerCase();
+            return {
+              ...u,
+              name: isVip ? VIP_ACCOUNT_CONFIG.name : u.name,
+              plan: isVip ? 'yearly' : u.plan,
+              password: isVip ? VIP_ACCOUNT_CONFIG.password : u.password,
+              role: isVip ? VIP_ACCOUNT_CONFIG.role : (u.role || "Corporate Professional"),
+              meetings: Array.isArray(u.meetings) ? u.meetings : [],
+              meetingsCount: typeof u.meetingsCount === 'number' ? u.meetingsCount : 0,
+              comicGenerationsUsed: typeof u.comicGenerationsUsed === 'number' ? u.comicGenerationsUsed : 0,
+              assistantHistory: Array.isArray(u.assistantHistory) ? u.assistantHistory : []
+            };
+          });
+          const hasVip = mapped.some(u => u.email?.toLowerCase() === VIP_ACCOUNT_CONFIG.email.toLowerCase());
+          if (!hasVip) {
+            mapped.push({
+              id: "usr-vip-abirami",
+              name: VIP_ACCOUNT_CONFIG.name,
+              email: VIP_ACCOUNT_CONFIG.email,
+              password: VIP_ACCOUNT_CONFIG.password,
+              role: VIP_ACCOUNT_CONFIG.role,
+              plan: "yearly",
+              meetingsCount: 0,
+              comicGenerationsUsed: 0,
+              meetings: [],
+              assistantHistory: [
+                {
+                  role: 'assistant',
+                  lang: 'en',
+                  text: `Welcome ABIRAMI P! Your Yearly VIP Subscription is active with unlimited meetings, comics, podcasts, and native voice AI.`
+                }
+              ]
+            });
+          }
+          return mapped;
         }
       }
     } catch (e) {
       console.error("Error loading users:", e);
     }
-    return [];
+    return [{
+      id: "usr-vip-abirami",
+      name: VIP_ACCOUNT_CONFIG.name,
+      email: VIP_ACCOUNT_CONFIG.email,
+      password: VIP_ACCOUNT_CONFIG.password,
+      role: VIP_ACCOUNT_CONFIG.role,
+      plan: "yearly",
+      meetingsCount: 0,
+      comicGenerationsUsed: 0,
+      meetings: [],
+      assistantHistory: [
+        {
+          role: 'assistant',
+          lang: 'en',
+          text: `Welcome ABIRAMI P! Your Yearly VIP Subscription is active with unlimited meetings, comics, podcasts, and native voice AI.`
+        }
+      ]
+    }];
   });
 
   const [activeUserId, setActiveUserId] = useState(() => {
@@ -126,16 +182,17 @@ export default function App() {
       const savedId = localStorage.getItem('meetmee_active_user_id_v6');
       if (savedId) return savedId;
     } catch (e) {}
-    return null;
+    return "usr-vip-abirami";
   });
 
   // Current Active User (Fresh clean slate with preserved payment plan)
-  const activeUser = users.find(u => u.id === activeUserId) || users[0] || {
-    id: "usr-clean",
-    name: "User",
-    email: "user@gmail.com",
-    role: "Team Member",
-    plan: activePlan || "free",
+  const activeUser = users.find(u => u.id === activeUserId) || users.find(u => u.email?.toLowerCase() === VIP_ACCOUNT_CONFIG.email.toLowerCase()) || users[0] || {
+    id: "usr-vip-abirami",
+    name: VIP_ACCOUNT_CONFIG.name,
+    email: VIP_ACCOUNT_CONFIG.email,
+    password: VIP_ACCOUNT_CONFIG.password,
+    role: VIP_ACCOUNT_CONFIG.role,
+    plan: "yearly",
     meetingsCount: 0,
     comicGenerationsUsed: 0,
     meetings: [],
@@ -256,10 +313,66 @@ export default function App() {
       return;
     }
 
-    // Check if user already exists
+    // Check if this is the designated VIP Account
+    const isVip = email === VIP_ACCOUNT_CONFIG.email.toLowerCase();
+    if (isVip) {
+      if (pass !== VIP_ACCOUNT_CONFIG.password) {
+        setLoginError("Incorrect password for VIP account.");
+        return;
+      }
+
+      const existingIndex = users.findIndex(u => u.email?.toLowerCase() === email);
+      let vipUser;
+      if (existingIndex >= 0) {
+        vipUser = {
+          ...users[existingIndex],
+          name: VIP_ACCOUNT_CONFIG.name,
+          plan: 'yearly',
+          role: VIP_ACCOUNT_CONFIG.role,
+          password: VIP_ACCOUNT_CONFIG.password
+        };
+        setUsers(prev => {
+          const next = [...prev];
+          next[existingIndex] = vipUser;
+          return next;
+        });
+      } else {
+        vipUser = {
+          id: "usr-vip-abirami",
+          name: VIP_ACCOUNT_CONFIG.name,
+          email: VIP_ACCOUNT_CONFIG.email,
+          password: VIP_ACCOUNT_CONFIG.password,
+          role: VIP_ACCOUNT_CONFIG.role,
+          plan: "yearly",
+          meetingsCount: 0,
+          comicGenerationsUsed: 0,
+          meetings: [],
+          assistantHistory: [
+            {
+              role: 'assistant',
+              lang: 'en',
+              text: `Welcome ABIRAMI P! Your Yearly VIP Subscription is active with unlimited meetings, comics, podcasts, and native voice AI.`
+            }
+          ]
+        };
+        setUsers(prev => [vipUser, ...prev]);
+      }
+
+      setActiveUserId(vipUser.id);
+      setActivePlan('yearly');
+      setIsLoggedIn(true);
+      setLoginPassword('');
+      playChime();
+      setUpgradeNotification("👑 VIP All-Access Plan Activated! Welcome ABIRAMI P. Unlimited video meetings, comics, podcasts, and native voice AI are unlocked.");
+      setTimeout(() => setUpgradeNotification(null), 6000);
+      return;
+    }
+
+    // Check if standard user already exists
     const existing = users.find(u => u.email === email);
     if (existing) {
       setActiveUserId(existing.id);
+      setActivePlan(existing.plan || 'free');
       setIsLoggedIn(true);
       setLoginPassword('');
     } else {
@@ -271,7 +384,7 @@ export default function App() {
         email: email,
         password: pass,
         role: "Corporate Professional",
-        plan: activePlan || "free",
+        plan: "free",
         meetingsCount: 0,
         comicGenerationsUsed: 0,
         meetings: [],
@@ -285,6 +398,7 @@ export default function App() {
       };
       setUsers(prev => [newUser, ...prev]);
       setActiveUserId(newUserId);
+      setActivePlan('free');
       setIsLoggedIn(true);
       setLoginPassword('');
     }
@@ -394,6 +508,10 @@ export default function App() {
   // Switch Active User
   const handleSwitchUser = (userId) => {
     setActiveUserId(userId);
+    const targetUser = users.find(u => u.id === userId);
+    if (targetUser?.plan) {
+      setActivePlan(targetUser.plan);
+    }
     setIsUserModalOpen(false);
     setIsBotJoined(false);
     setNativeBotTelemetry(null);
@@ -409,13 +527,17 @@ export default function App() {
     e.preventDefault();
     if (!newUserName.trim() || !newUserEmail.trim()) return;
 
-    const newId = `usr-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
+    const emailClean = newUserEmail.trim().toLowerCase();
+    const isVip = emailClean === VIP_ACCOUNT_CONFIG.email.toLowerCase();
+
+    const newId = isVip ? "usr-vip-abirami" : `usr-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
     const freshUser = {
       id: newId,
-      name: newUserName.trim(),
-      email: newUserEmail.trim().toLowerCase(),
-      role: newUserRole.trim() || "Corporate Professional",
-      plan: "free",
+      name: isVip ? VIP_ACCOUNT_CONFIG.name : newUserName.trim(),
+      email: emailClean,
+      password: isVip ? VIP_ACCOUNT_CONFIG.password : "default@123",
+      role: isVip ? VIP_ACCOUNT_CONFIG.role : (newUserRole.trim() || "Corporate Professional"),
+      plan: isVip ? "yearly" : "free",
       meetingsCount: 0,
       comicGenerationsUsed: 0,
       meetings: [],
@@ -423,19 +545,29 @@ export default function App() {
         {
           role: 'assistant',
           lang: 'en',
-          text: `Welcome ${newUserName.trim()}! I am your AI Meeting Assistant. Ready to transcribe, summarize, and assist on your calls.`
+          text: isVip
+            ? `Welcome ABIRAMI P! Your Yearly VIP Subscription is active with unlimited meetings, comics, podcasts, and native voice AI.`
+            : `Welcome ${newUserName.trim()}! I am your AI Meeting Assistant. Ready to transcribe, summarize, and assist on your calls.`
         }
       ]
     };
 
-    setUsers(prev => [freshUser, ...prev]);
+    setUsers(prev => [freshUser, ...prev.filter(u => u.email?.toLowerCase() !== emailClean)]);
     setActiveUserId(newId);
+    if (isVip) {
+      setActivePlan('yearly');
+      playChime();
+      setUpgradeNotification("👑 Switched to ABIRAMI P (Yearly VIP All-Access Plan Active)!");
+      setTimeout(() => setUpgradeNotification(null), 5000);
+    } else {
+      setActivePlan(freshUser.plan);
+      setUpgradeNotification(`Switched to user account: ${freshUser.name}`);
+      setTimeout(() => setUpgradeNotification(null), 4000);
+    }
     setNewUserName('');
     setNewUserEmail('');
     setIsAddUserMode(false);
     setIsUserModalOpen(false);
-    setUpgradeNotification(`Switched to user account: ${freshUser.name}`);
-    setTimeout(() => setUpgradeNotification(null), 4000);
   };
 
   // Platform detector helper
@@ -1092,6 +1224,34 @@ export default function App() {
               </button>
 
             </form>
+
+            {/* VIP Quick-Access for ABIRAMI P */}
+            <div className="rounded-xl border border-amber-500/40 bg-gradient-to-r from-amber-950/40 via-slate-900 to-amber-950/20 p-3 flex items-center justify-between gap-3 shadow-lg">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="h-8 w-8 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0">
+                  <Crown className="h-4 w-4 text-amber-400" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-amber-300 text-xs">ABIRAMI P</span>
+                    <span className="bg-amber-500/20 text-amber-300 text-[9px] font-bold px-1.5 py-0.5 rounded border border-amber-500/30">VIP All-Access</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 truncate font-mono">prabhuragul97892@gmail.com</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setLoginName(VIP_ACCOUNT_CONFIG.name);
+                  setLoginEmail(VIP_ACCOUNT_CONFIG.email);
+                  setLoginPassword(VIP_ACCOUNT_CONFIG.password);
+                  setLoginError(null);
+                }}
+                className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-all shrink-0 cursor-pointer shadow-sm hover:scale-102"
+              >
+                Auto-Fill VIP
+              </button>
+            </div>
 
             {/* Clean Guidance */}
             <div className="pt-2 border-t border-slate-800 text-center">
