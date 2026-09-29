@@ -574,11 +574,11 @@ export default function App() {
         }
         setLiveTranscribedText(current);
 
-        const lower = current.toLowerCase();
-        const userNameLower = activeUser.name.toLowerCase().split(' ')[0];
+        const userFirstName = (activeUser?.name || '').toLowerCase().split(' ')[0];
+        const isAddressed = (userFirstName && lower.includes(userFirstName)) || lower.includes('you') || lower.includes('team');
 
         // Trigger Pop-up ONLY when mentor asks question or addresses user
-        if ((lower.includes(userNameLower) || lower.includes('alex') || lower.includes('team') || lower.includes('you')) && 
+        if (isAddressed && 
             (lower.includes('?') || lower.includes('what') || lower.includes('how') || lower.includes('explain') || lower.includes('status'))) {
           triggerMentorQuestionPopup(current);
         }
@@ -1032,7 +1032,7 @@ export default function App() {
                     required
                     value={loginName}
                     onChange={(e) => setLoginName(e.target.value)}
-                    placeholder="e.g. Alex Rivera"
+                    placeholder="Enter full name"
                     className="w-full rounded-xl border border-slate-700 bg-slate-950 pl-9 pr-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none transition-all"
                   />
                 </div>
@@ -1238,22 +1238,22 @@ export default function App() {
               </span>
               <button
                 type="button"
-                onClick={() => handleApplyPreset("Sprint Architecture Sync", "https://meet.google.com/abc-defg-hij")}
-                className="rounded-lg bg-slate-900 border border-slate-800 hover:border-blue-500/50 px-2 py-1 text-[11px] text-slate-300 hover:text-white transition-all"
+                onClick={() => setMeetingUrl("https://meet.google.com/")}
+                className="rounded-lg bg-slate-900 border border-slate-800 hover:border-blue-500/50 px-2 py-1 text-[11px] text-slate-300 hover:text-white transition-all cursor-pointer"
               >
                 Google Meet
               </button>
               <button
                 type="button"
-                onClick={() => handleApplyPreset("Engineering Standup & Q&A", "https://zoom.us/j/9842018471")}
-                className="rounded-lg bg-slate-900 border border-slate-800 hover:border-blue-500/50 px-2 py-1 text-[11px] text-slate-300 hover:text-white transition-all"
+                onClick={() => setMeetingUrl("https://zoom.us/j/")}
+                className="rounded-lg bg-slate-900 border border-slate-800 hover:border-blue-500/50 px-2 py-1 text-[11px] text-slate-300 hover:text-white transition-all cursor-pointer"
               >
                 Zoom Call
               </button>
               <button
                 type="button"
-                onClick={() => handleApplyPreset("Product Roadmap Review", "https://teams.microsoft.com/l/meetup-join/19")}
-                className="rounded-lg bg-slate-900 border border-slate-800 hover:border-blue-500/50 px-2 py-1 text-[11px] text-slate-300 hover:text-white transition-all"
+                onClick={() => setMeetingUrl("https://teams.microsoft.com/")}
+                className="rounded-lg bg-slate-900 border border-slate-800 hover:border-blue-500/50 px-2 py-1 text-[11px] text-slate-300 hover:text-white transition-all cursor-pointer"
               >
                 MS Teams
               </button>
@@ -1276,7 +1276,7 @@ export default function App() {
                 required
                 value={meetingUrl}
                 onChange={(e) => setMeetingUrl(e.target.value)}
-                placeholder="e.g. https://meet.google.com/abc-defg-hij or Zoom / Teams link"
+                placeholder="Paste your Google Meet, Zoom, or Teams invite link here..."
                 className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 sm:py-3 text-xs sm:text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
               />
 
@@ -1285,7 +1285,7 @@ export default function App() {
                   type="text"
                   value={meetingTitle}
                   onChange={(e) => setMeetingTitle(e.target.value)}
-                  placeholder="Meeting Title (e.g. Sprint Architecture Sync)"
+                  placeholder="Meeting Title (optional, e.g. Team Sync)"
                   className="w-full sm:flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
                 />
                 
@@ -1839,23 +1839,23 @@ export default function App() {
                     <div className="mt-5 space-y-2 text-xs text-slate-300 border-t border-slate-800 pt-4">
                       <div className="flex items-center gap-2">
                         <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-                        <span><strong>Unlimited meetings</strong> (Zero limits)</span>
+                        <span><strong className="text-white">UNLIMITED Video Meetings &amp; Bot Attendance</strong> (Zero limits)</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-                        <span className="text-pink-300 font-bold">4-Panel Comic Strip (UNLIMITED Generations)</span>
+                        <span className="text-pink-300 font-bold">UNLIMITED 4-Panel AI Comic Strip Generations</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-                        <span className="text-amber-300 font-bold">Native Language Voice Assistant for General Use</span>
+                        <span className="text-indigo-300 font-semibold"><strong className="text-white">UNLIMITED Multilingual Podcasts</strong> (NotebookLM Engine)</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-                        <span className="text-indigo-300 font-semibold">NotebookLM Multilingual Podcast Engine</span>
+                        <span className="text-amber-300 font-bold">UNLIMITED Native Language Voice Assistant for General Use</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-                        <span>Priority 24/7 Processing Queue</span>
+                        <span>Priority 24/7 Cloud Processing Queue &amp; Auto-Retention</span>
                       </div>
                     </div>
                   </div>
@@ -2879,7 +2879,7 @@ export default function App() {
                     required
                     value={newUserName}
                     onChange={(e) => setNewUserName(e.target.value)}
-                    placeholder="e.g. Priya Sharma"
+                    placeholder="Enter full name"
                     className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
                   />
                 </div>
@@ -2891,7 +2891,7 @@ export default function App() {
                     required
                     value={newUserEmail}
                     onChange={(e) => setNewUserEmail(e.target.value)}
-                    placeholder="e.g. priya.sharma@gmail.com"
+                    placeholder="name@gmail.com"
                     className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
                   />
                 </div>
@@ -2902,7 +2902,7 @@ export default function App() {
                     type="text"
                     value={newUserRole}
                     onChange={(e) => setNewUserRole(e.target.value)}
-                    placeholder="e.g. Senior Product Manager"
+                    placeholder="Enter role or department (optional)"
                     className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
                   />
                 </div>
