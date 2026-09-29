@@ -73,9 +73,17 @@ export default function App() {
   // =========================================================================
   // AUTHENTICATION & LOGIN STATE (NAME, GMAIL, PASSWORD)
   // =========================================================================
+  const [activePlan, setActivePlan] = useState(() => {
+    try {
+      return localStorage.getItem('meetmee_payment_plan_v6') || 'free';
+    } catch (e) {
+      return 'free';
+    }
+  });
+
   const [isLoggedIn, setIsLoggedIn] = useState(() => {
     try {
-      return localStorage.getItem('meetmee_is_logged_in_v5') === 'true';
+      return localStorage.getItem('meetmee_is_logged_in_v6') === 'true';
     } catch (e) {
       return false;
     }
@@ -93,10 +101,19 @@ export default function App() {
   // =========================================================================
   const [users, setUsers] = useState(() => {
     try {
-      const saved = localStorage.getItem('meetmee_users_v5');
+      const saved = localStorage.getItem('meetmee_users_v6');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Keep registered profile & plan, but ensure all meetings & newly added dummy records are clean
+          return parsed.map(u => ({
+            ...u,
+            meetings: Array.isArray(u.meetings) ? u.meetings : [],
+            meetingsCount: typeof u.meetingsCount === 'number' ? u.meetingsCount : 0,
+            comicGenerationsUsed: typeof u.comicGenerationsUsed === 'number' ? u.comicGenerationsUsed : 0,
+            assistantHistory: Array.isArray(u.assistantHistory) ? u.assistantHistory : []
+          }));
+        }
       }
     } catch (e) {
       console.error("Error loading users:", e);
@@ -106,35 +123,116 @@ export default function App() {
 
   const [activeUserId, setActiveUserId] = useState(() => {
     try {
-      const savedId = localStorage.getItem('meetmee_active_user_id_v5');
+      const savedId = localStorage.getItem('meetmee_active_user_id_v6');
       if (savedId) return savedId;
     } catch (e) {}
     return null;
   });
 
-  // Current Active User
+  // Current Active User (Fresh clean slate with preserved payment plan)
   const activeUser = users.find(u => u.id === activeUserId) || users[0] || {
-    id: "usr-default",
+    id: "usr-clean",
     name: "User",
     email: "user@gmail.com",
-    role: "Corporate Professional",
-    plan: "free",
+    role: "Team Member",
+    plan: activePlan || "free",
     meetingsCount: 0,
     comicGenerationsUsed: 0,
     meetings: [],
     assistantHistory: []
   };
 
-  // Sync users & session to localStorage
+  // Sync users, payment plan & session to localStorage v6
   useEffect(() => {
     try {
-      localStorage.setItem('meetmee_users_v5', JSON.stringify(users));
-      if (activeUserId) localStorage.setItem('meetmee_active_user_id_v5', activeUserId);
-      localStorage.setItem('meetmee_is_logged_in_v5', isLoggedIn ? 'true' : 'false');
+      localStorage.setItem('meetmee_users_v6', JSON.stringify(users));
+      if (activeUserId) localStorage.setItem('meetmee_active_user_id_v6', activeUserId);
+      localStorage.setItem('meetmee_is_logged_in_v6', isLoggedIn ? 'true' : 'false');
+      if (activeUser?.plan) localStorage.setItem('meetmee_payment_plan_v6', activeUser.plan);
     } catch (e) {
       console.error("Error saving users to storage:", e);
     }
-  }, [users, activeUserId, isLoggedIn]);
+  }, [users, activeUserId, isLoggedIn, activeUser?.plan]);
+
+  // One-time automatic reset on startup: strips default mock meetings & test data while strictly preserving payment data
+  useEffect(() => {
+    try {
+      const isAlreadyMigrated = localStorage.getItem('meetmee_clean_reset_done_v6');
+      if (!isAlreadyMigrated) {
+        let preservedPlan = 'free';
+        // Check older storage versions for any paid subscription (Monthly ₹99 or Yearly ₹1099)
+        const oldUsers = localStorage.getItem('meetmee_users_v5');
+        if (oldUsers) {
+          try {
+            const parsed = JSON.parse(oldUsers);
+            if (Array.isArray(parsed)) {
+              const paid = parsed.find(u => u.plan === 'yearly' || u.plan === 'monthly');
+              if (paid) preservedPlan = paid.plan;
+            }
+          } catch (e) {}
+        }
+        localStorage.setItem('meetmee_payment_plan_v6', preservedPlan);
+        setActivePlan(preservedPlan);
+
+        // Wipe old mock keys
+        localStorage.removeItem('meetmee_users_v5');
+        localStorage.removeItem('meetmee_meetings_v4');
+        localStorage.removeItem('meetmee_active_user_id_v5');
+        localStorage.setItem('meetmee_clean_reset_done_v6', 'true');
+
+        // Reset in-memory users' meeting lists to 0
+        setUsers(prev => prev.map(u => ({
+          ...u,
+          plan: preservedPlan !== 'free' ? preservedPlan : u.plan,
+          meetings: [],
+          meetingsCount: 0,
+          comicGenerationsUsed: 0,
+          assistantHistory: []
+        })));
+        setSelectedMeetingId(null);
+      }
+    } catch (e) {
+      console.error("Error in clean reset:", e);
+    }
+  }, []);
+
+  // Reset all default and newly added meeting data EXCEPT payment data
+  const handleResetAllDataExceptPayment = () => {
+    const preservedPlan = activeUser?.plan || activePlan || 'free';
+    try {
+      localStorage.setItem('meetmee_payment_plan_v6', preservedPlan);
+      localStorage.removeItem('meetmee_users_v5');
+      localStorage.removeItem('meetmee_meetings_v4');
+    } catch (e) {}
+
+    // Reset all users' meetings, newly added records, and quotas
+    setUsers(prev => prev.map(u => ({
+      ...u,
+      plan: preservedPlan,
+      meetings: [],
+      meetingsCount: 0,
+      comicGenerationsUsed: 0,
+      assistantHistory: []
+    })));
+
+    // Reset workspace UI states
+    setSelectedMeetingId(null);
+    setMeetingUrl('');
+    setMeetingTitle('');
+    setLiveTranscribedText('');
+    setIsBotJoined(false);
+    setIsLiveListening(false);
+    setIsPopupVisible(false);
+    setActiveMentorQuestion('');
+    setSuggestedAnswer('');
+    setCitation('');
+    setEmailSent(false);
+
+    playChime();
+    const planName = preservedPlan === 'yearly' ? 'Yearly VIP (₹1,099/yr)' : preservedPlan === 'monthly' ? 'Monthly (₹99/mo)' : 'Free Tier (₹0)';
+    setUpgradeNotification(`🧹 Workspace reset complete! All meeting records and newly added data cleared. Payment plan (${planName}) & QR gateway preserved.`);
+    setTimeout(() => setUpgradeNotification(null), 5000);
+  };
 
   // Login Handler (Requires: Name, Gmail, Password)
   const handleAuthSubmit = (e) => {
@@ -161,12 +259,11 @@ export default function App() {
     // Check if user already exists
     const existing = users.find(u => u.email === email);
     if (existing) {
-      // Log in as existing user
       setActiveUserId(existing.id);
       setIsLoggedIn(true);
       setLoginPassword('');
     } else {
-      // Register fresh user
+      // Register fresh user starting with a clean slate
       const newUserId = `usr-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
       const newUser = {
         id: newUserId,
@@ -174,9 +271,9 @@ export default function App() {
         email: email,
         password: pass,
         role: "Corporate Professional",
-        plan: "free",
+        plan: activePlan || "free",
         meetingsCount: 0,
-        comicGenerationsUsed: 0, // Gated: 0/3 on ₹99, unlimited on ₹1099
+        comicGenerationsUsed: 0,
         meetings: [],
         assistantHistory: [
           {
@@ -193,14 +290,6 @@ export default function App() {
     }
   };
 
-  // Quick Demo Login helper for instant access
-  const handleQuickDemoLogin = (demoName, demoEmail) => {
-    setLoginName(demoName);
-    setLoginEmail(demoEmail);
-    setLoginPassword("meetmee123");
-    setLoginError(null);
-  };
-
   // Logout Handler
   const handleLogout = () => {
     setIsLoggedIn(false);
@@ -211,7 +300,7 @@ export default function App() {
       speechRecognitionInstance.stop();
       setIsLiveListening(false);
     }
-    localStorage.setItem('meetmee_is_logged_in_v5', 'false');
+    localStorage.setItem('meetmee_is_logged_in_v6', 'false');
   };
 
   // Switch User Modal State
@@ -943,7 +1032,7 @@ export default function App() {
                     required
                     value={loginName}
                     onChange={(e) => setLoginName(e.target.value)}
-                    placeholder="e.g. Priya Sharma or Alex Chen"
+                    placeholder="e.g. Alex Rivera"
                     className="w-full rounded-xl border border-slate-700 bg-slate-950 pl-9 pr-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none transition-all"
                   />
                 </div>
@@ -961,7 +1050,7 @@ export default function App() {
                     required
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
-                    placeholder="e.g. priya.sharma@gmail.com"
+                    placeholder="name@gmail.com"
                     className="w-full rounded-xl border border-slate-700 bg-slate-950 pl-9 pr-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none transition-all"
                   />
                 </div>
@@ -996,7 +1085,7 @@ export default function App() {
               {/* Submit Button */}
               <button
                 type="submit"
-                className="w-full rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-3 text-xs font-bold text-white shadow-lg shadow-blue-500/25 transition-all hover:scale-101 active:scale-98 flex items-center justify-center gap-2 mt-2"
+                className="w-full rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-3 text-xs font-bold text-white shadow-lg shadow-blue-500/25 transition-all hover:scale-101 active:scale-98 flex items-center justify-center gap-2 mt-2 cursor-pointer"
               >
                 <span>{isSignUpMode ? "Create Account & Go to Homepage" : "Log In & Go to Homepage"}</span>
                 <ArrowRight className="h-4 w-4" />
@@ -1004,25 +1093,13 @@ export default function App() {
 
             </form>
 
-            {/* Quick 1-Click Demo Logins */}
-            <div className="pt-2 border-t border-slate-800 text-center space-y-2">
-              <span className="text-[11px] text-slate-400 block font-medium">Or 1-click login with demo credentials:</span>
-              <div className="flex justify-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleQuickDemoLogin("Priya Sharma", "priya.sharma@gmail.com")}
-                  className="rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 px-2.5 py-1 text-[11px] text-slate-300 transition-all"
-                >
-                  👤 Priya (Product)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickDemoLogin("Alex Chen", "alex.chen@gmail.com")}
-                  className="rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 px-2.5 py-1 text-[11px] text-slate-300 transition-all"
-                >
-                  👤 Alex (Engineer)
-                </button>
-              </div>
+            {/* Clean Guidance */}
+            <div className="pt-2 border-t border-slate-800 text-center">
+              <span className="text-[11px] text-slate-400 block">
+                {isSignUpMode 
+                  ? "Fresh account starts with 3 free meetings. Upgradable via UPI QR anytime." 
+                  : "Enter your registered Name, Gmail, and Password to enter your workspace."}
+              </span>
             </div>
 
           </div>
@@ -1892,16 +1969,28 @@ export default function App() {
                   </p>
                 </div>
 
-                {activeUser.meetings.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
                   <button
-                    onClick={handleRunMonthlyPurge}
-                    className="flex items-center justify-center gap-1.5 rounded-xl bg-rose-600/20 border border-rose-500/30 px-3.5 py-1.5 text-xs font-semibold text-rose-300 hover:bg-rose-600 hover:text-white transition-all shrink-0"
-                    title="Simulate monthly auto-erase: purges all unsaved meetings"
+                    type="button"
+                    onClick={handleResetAllDataExceptPayment}
+                    className="flex items-center justify-center gap-1.5 rounded-xl bg-slate-800 border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-all shrink-0 cursor-pointer"
+                    title="Reset all meeting records and newly added data while keeping subscription plan & payment data intact"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Run Monthly Auto-Purge
+                    <RotateCcw className="h-3.5 w-3.5 text-rose-400" />
+                    <span>Reset All Data (Except Payment)</span>
                   </button>
-                )}
+
+                  {activeUser.meetings.length > 0 && (
+                    <button
+                      onClick={handleRunMonthlyPurge}
+                      className="flex items-center justify-center gap-1.5 rounded-xl bg-rose-600/20 border border-rose-500/30 px-3.5 py-1.5 text-xs font-semibold text-rose-300 hover:bg-rose-600 hover:text-white transition-all shrink-0"
+                      title="Simulate monthly auto-erase: purges all unsaved meetings"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Run Monthly Auto-Purge
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Search & Filter Controls */}
@@ -2747,17 +2836,31 @@ export default function App() {
                   ))}
                 </div>
 
-                <div className="pt-2 border-t border-slate-800 flex justify-between gap-2">
-                  <button
-                    onClick={() => setIsAddUserMode(true)}
-                    className="flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3.5 py-2 shadow-sm transition-all"
-                  >
-                    <UserPlus className="h-4 w-4" />
-                    Register New User
-                  </button>
+                <div className="pt-2 border-t border-slate-800 flex flex-wrap justify-between gap-2">
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setIsAddUserMode(true)}
+                      className="flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-2 shadow-sm transition-all cursor-pointer"
+                    >
+                      <UserPlus className="h-4 w-4" />
+                      Register New User
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleResetAllDataExceptPayment();
+                        setIsUserModalOpen(false);
+                      }}
+                      className="flex items-center gap-1.5 rounded-xl bg-slate-800 border border-slate-700 hover:bg-rose-950/40 hover:border-rose-500/40 text-rose-300 text-xs font-semibold px-3 py-2 transition-all cursor-pointer"
+                      title="Reset all meeting records & newly added data while keeping payment data"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      Reset Data
+                    </button>
+                  </div>
                   <button
                     onClick={() => setIsUserModalOpen(false)}
-                    className="rounded-xl border border-slate-700 bg-slate-800 text-slate-300 text-xs font-semibold px-4 py-2 hover:bg-slate-700"
+                    className="rounded-xl border border-slate-700 bg-slate-800 text-slate-300 text-xs font-semibold px-4 py-2 hover:bg-slate-700 cursor-pointer"
                   >
                     Close
                   </button>
