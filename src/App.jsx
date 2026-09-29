@@ -1225,34 +1225,6 @@ export default function App() {
 
             </form>
 
-            {/* VIP Quick-Access for ABIRAMI P */}
-            <div className="rounded-xl border border-amber-500/40 bg-gradient-to-r from-amber-950/40 via-slate-900 to-amber-950/20 p-3 flex items-center justify-between gap-3 shadow-lg">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="h-8 w-8 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0">
-                  <Crown className="h-4 w-4 text-amber-400" />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-amber-300 text-xs">ABIRAMI P</span>
-                    <span className="bg-amber-500/20 text-amber-300 text-[9px] font-bold px-1.5 py-0.5 rounded border border-amber-500/30">VIP All-Access</span>
-                  </div>
-                  <p className="text-[10px] text-slate-400 truncate font-mono">prabhuragul97892@gmail.com</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setLoginName(VIP_ACCOUNT_CONFIG.name);
-                  setLoginEmail(VIP_ACCOUNT_CONFIG.email);
-                  setLoginPassword(VIP_ACCOUNT_CONFIG.password);
-                  setLoginError(null);
-                }}
-                className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-all shrink-0 cursor-pointer shadow-sm hover:scale-102"
-              >
-                Auto-Fill VIP
-              </button>
-            </div>
-
             {/* Clean Guidance */}
             <div className="pt-2 border-t border-slate-800 text-center">
               <span className="text-[11px] text-slate-400 block">
@@ -3089,115 +3061,132 @@ export default function App() {
       )}
 
       {/* ========================================================================= */}
-      {/* PERSISTENT CURRENT SUBSCRIPTION PLAN DISPLAY AT BOTTOM */}
+      {/* SHOW PURCHASED SUBSCRIPTION AT BOTTOM OF WEB APP (WHEN USER BOUGHT PLAN) */}
       {/* ========================================================================= */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-10 mb-6 w-full">
-        <div className={`rounded-2xl border p-4 sm:p-6 transition-all shadow-2xl relative overflow-hidden ${
-          activeUser.plan === 'yearly'
-            ? 'border-amber-500/60 bg-gradient-to-r from-amber-950/40 via-slate-900 to-amber-950/20 ring-1 ring-amber-500/30'
-            : activeUser.plan === 'monthly'
-              ? 'border-indigo-500/60 bg-gradient-to-r from-indigo-950/40 via-slate-900 to-indigo-950/20 ring-1 ring-indigo-500/30'
-              : 'border-blue-500/50 bg-gradient-to-r from-blue-950/30 via-slate-900 to-slate-950 ring-1 ring-blue-500/20'
-        }`}>
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
-            {/* Plan Info Column */}
-            <div className="space-y-2.5 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  Current Subscription Plan:
-                </span>
-                {activeUser.plan === 'yearly' && (
-                  <span className="inline-flex items-center gap-1.5 bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-bold px-3 py-1 rounded-full shadow-sm">
-                    <Crown className="h-3.5 w-3.5 text-amber-400" />
-                    Yearly VIP All-Access Plan (₹1,099/yr)
+        {activeUser.plan !== 'free' ? (
+          /* DISPLAY WHEN USER HAS BOUGHT SUBSCRIPTION */
+          <div className={`rounded-2xl border p-4 sm:p-6 transition-all shadow-2xl relative overflow-hidden animate-in fade-in duration-300 ${
+            activeUser.plan === 'yearly'
+              ? 'border-amber-500/70 bg-gradient-to-r from-amber-950/50 via-slate-900 to-amber-950/30 ring-2 ring-amber-500/40'
+              : 'border-indigo-500/70 bg-gradient-to-r from-indigo-950/50 via-slate-900 to-indigo-950/30 ring-2 ring-indigo-500/40'
+          }`}>
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+              {/* Plan Info Column */}
+              <div className="space-y-2.5 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    Active Purchased Subscription:
                   </span>
-                )}
-                {activeUser.plan === 'monthly' && (
-                  <span className="inline-flex items-center gap-1.5 bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 text-xs font-bold px-3 py-1 rounded-full shadow-sm">
-                    <Zap className="h-3.5 w-3.5 text-indigo-400" />
-                    Monthly Pro Plan (₹99/mo)
-                  </span>
-                )}
-                {activeUser.plan === 'free' && (
-                  <span className="inline-flex items-center gap-1.5 bg-blue-500/20 border border-blue-500/40 text-blue-300 text-xs font-bold px-3 py-1 rounded-full shadow-sm">
-                    <ShieldCheck className="h-3.5 w-3.5 text-blue-400" />
-                    Starter Free Tier (₹0)
-                  </span>
-                )}
-              </div>
-
-              {/* Status details & metrics grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1 text-xs">
-                <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-2.5">
-                  <span className="text-[10px] text-slate-400 block uppercase font-medium">Meeting Quota</span>
-                  <span className="text-white font-bold">
-                    {activeUser.plan === 'yearly' 
-                      ? 'Unlimited Access' 
-                      : activeUser.plan === 'monthly'
-                        ? `${activeUser.meetingsCount || 0} / 100 meetings`
-                        : `${activeUser.meetingsCount || 0} / 3 meetings`}
-                  </span>
+                  {activeUser.plan === 'yearly' && (
+                    <span className="inline-flex items-center gap-1.5 bg-amber-500/20 border border-amber-500/50 text-amber-300 text-xs font-bold px-3 py-1 rounded-full shadow-md">
+                      <Crown className="h-4 w-4 text-amber-400" />
+                      Yearly VIP All-Access Plan (₹1,099/yr) &bull; Verified Active
+                    </span>
+                  )}
+                  {activeUser.plan === 'monthly' && (
+                    <span className="inline-flex items-center gap-1.5 bg-indigo-500/20 border border-indigo-500/50 text-indigo-300 text-xs font-bold px-3 py-1 rounded-full shadow-md">
+                      <Zap className="h-4 w-4 text-indigo-400" />
+                      Monthly Pro Plan (₹99/mo) &bull; Verified Active
+                    </span>
+                  )}
                 </div>
 
-                <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-2.5">
-                  <span className="text-[10px] text-slate-400 block uppercase font-medium">Comic Generator</span>
-                  <span className="font-bold">
-                    {activeUser.plan === 'yearly' ? (
-                      <span className="text-amber-300">Unlimited Active</span>
-                    ) : activeUser.plan === 'monthly' ? (
-                      <span className="text-pink-300">{activeUser.comicGenerationsUsed || 0} / 3 used</span>
-                    ) : (
-                      <span className="text-rose-400">Locked (Upgrade)</span>
-                    )}
-                  </span>
-                </div>
+                {/* Status details & metrics grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1 text-xs">
+                  <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-2.5">
+                    <span className="text-[10px] text-slate-400 block uppercase font-medium">Meeting Quota</span>
+                    <span className="text-white font-bold">
+                      {activeUser.plan === 'yearly' 
+                        ? 'Unlimited Access' 
+                        : `${activeUser.meetingsCount || 0} / 100 meetings`}
+                    </span>
+                  </div>
 
-                <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-2.5">
-                  <span className="text-[10px] text-slate-400 block uppercase font-medium">Multilingual Podcast</span>
-                  <span className="font-bold">
-                    {activeUser.plan === 'yearly' ? (
-                      <span className="text-emerald-400">Active (NotebookLM)</span> 
-                    ) : (
-                      <span className="text-slate-500">Locked (Yearly only)</span>
-                    )}
-                  </span>
-                </div>
+                  <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-2.5">
+                    <span className="text-[10px] text-slate-400 block uppercase font-medium">Comic Generator</span>
+                    <span className="font-bold">
+                      {activeUser.plan === 'yearly' ? (
+                        <span className="text-amber-300">Unlimited Active</span>
+                      ) : (
+                        <span className="text-pink-300">{activeUser.comicGenerationsUsed || 0} / 3 used</span>
+                      )}
+                    </span>
+                  </div>
 
-                <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-2.5">
-                  <span className="text-[10px] text-slate-400 block uppercase font-medium">Native Voice AI</span>
-                  <span className="font-bold">
-                    {activeUser.plan === 'yearly' ? (
-                      <span className="text-amber-400">Active (Multi-dialect)</span> 
-                    ) : (
-                      <span className="text-slate-500">Locked (Yearly only)</span>
-                    )}
-                  </span>
+                  <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-2.5">
+                    <span className="text-[10px] text-slate-400 block uppercase font-medium">Multilingual Podcast</span>
+                    <span className="font-bold">
+                      {activeUser.plan === 'yearly' ? (
+                        <span className="text-emerald-400">Active (NotebookLM)</span> 
+                      ) : (
+                        <span className="text-slate-500">Locked (Yearly only)</span>
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-2.5">
+                    <span className="text-[10px] text-slate-400 block uppercase font-medium">Native Voice AI</span>
+                    <span className="font-bold">
+                      {activeUser.plan === 'yearly' ? (
+                        <span className="text-amber-400">Active (Multi-dialect)</span> 
+                      ) : (
+                        <span className="text-slate-500">Locked (Yearly only)</span>
+                      )}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Action Buttons Column */}
-            <div className="flex flex-col sm:flex-row lg:flex-col gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => handleOpenPaymentModal(activeUser.plan === 'free' ? 'monthly' : 'yearly')}
-                className="bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-500 hover:from-blue-500 hover:to-indigo-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer"
-              >
-                <QrCode className="h-4 w-4" />
-                <span>Buy / Upgrade Subscription (Scan QR)</span>
-              </button>
+              {/* Action Buttons Column */}
+              <div className="flex flex-col sm:flex-row lg:flex-col gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleOpenPaymentModal(activeUser.plan === 'monthly' ? 'yearly' : 'monthly')}
+                  className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <QrCode className="h-4 w-4" />
+                  <span>Renew / Upgrade Plan (Scan QR)</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setActiveTab('pricing')}
-                className="border border-slate-700 bg-slate-900/90 hover:bg-slate-800 text-slate-300 text-xs font-semibold px-4 py-2 rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-              >
-                <span>View Full Pricing Comparison</span>
-                <ArrowRight className="h-3.5 w-3.5" />
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('pricing')}
+                  className="border border-slate-700 bg-slate-900/90 hover:bg-slate-800 text-slate-300 text-xs font-semibold px-4 py-2 rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <span>View All Benefits</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        ) : (
+          /* DISPLAY WHEN NO PAID SUBSCRIPTION BOUGHT YET */
+          <div className="rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-900 via-slate-900/90 to-blue-950/30 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+                <QrCode className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-white flex items-center gap-2">
+                  <span>Unlock Unlimited AI Meeting Intelligence</span>
+                  <span className="bg-blue-500/20 text-blue-300 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-blue-500/30">Free Tier Active</span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Buy a subscription via UPI QR to unlock unlimited video bot attendance, comic strips, podcasts, and native voice AI.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleOpenPaymentModal('monthly')}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer self-start sm:self-auto shrink-0"
+            >
+              <QrCode className="h-4 w-4" />
+              <span>Buy Subscription (Scan QR)</span>
+            </button>
+          </div>
+        )}
       </section>
 
       {/* Footer */}
@@ -3217,52 +3206,49 @@ export default function App() {
       </footer>
 
       {/* ========================================================================= */}
-      {/* FIXED / DOCKED BOTTOM BAR (PERSISTENT PLAN STATUS & SCAN QR CTA) */}
+      {/* FIXED / DOCKED BOTTOM BAR (DISPLAYED WHEN USER BOUGHT SUBSCRIPTION) */}
       {/* ========================================================================= */}
-      <div className="fixed bottom-0 inset-x-0 z-40 bg-slate-950/95 backdrop-blur-md border-t border-slate-800/90 py-2 px-3 sm:px-6 shadow-2xl flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5 overflow-hidden">
-          <div className="h-7 w-7 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center shrink-0">
-            {activeUser.plan === 'yearly' ? (
-              <Crown className="h-4 w-4 text-amber-400" />
-            ) : activeUser.plan === 'monthly' ? (
-              <Zap className="h-4 w-4 text-indigo-400" />
-            ) : (
-              <ShieldCheck className="h-4 w-4 text-blue-400" />
-            )}
-          </div>
-          <div className="truncate">
-            <div className="text-xs font-bold text-white flex items-center gap-1.5 truncate">
-              <span className="text-slate-400">Current Plan:</span>
-              <span className={
-                activeUser.plan === 'yearly' ? 'text-amber-400' :
-                activeUser.plan === 'monthly' ? 'text-indigo-400' : 'text-blue-400'
-              }>
-                {activeUser.plan === 'yearly' ? 'Yearly VIP Plan (₹1,099/yr)' :
-                 activeUser.plan === 'monthly' ? 'Monthly Plan (₹99/mo)' : 'Free Tier (₹0)'}
-              </span>
+      {activeUser.plan !== 'free' && (
+        <div className="fixed bottom-0 inset-x-0 z-40 bg-slate-950/95 backdrop-blur-md border-t border-amber-500/40 py-2 px-3 sm:px-6 shadow-2xl flex items-center justify-between gap-3 animate-in slide-in-from-bottom duration-300">
+          <div className="flex items-center gap-2.5 overflow-hidden">
+            <div className="h-7 w-7 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0">
+              {activeUser.plan === 'yearly' ? (
+                <Crown className="h-4 w-4 text-amber-400" />
+              ) : (
+                <Zap className="h-4 w-4 text-indigo-400" />
+              )}
             </div>
-            <p className="text-[10px] text-slate-400 truncate hidden xs:block sm:block">
-              {activeUser.plan === 'yearly' 
-                ? 'Unlimited Meetings & Comic Generations Active' 
-                : activeUser.plan === 'monthly'
-                  ? `Comics: ${activeUser.comicGenerationsUsed || 0}/3 used • Up to 100 meetings`
-                  : `${activeUser.meetingsCount || 0}/3 meetings used • Comics & Podcasts Locked`}
-            </p>
+            <div className="truncate">
+              <div className="text-xs font-bold text-white flex items-center gap-1.5 truncate">
+                <span className="text-slate-400">Purchased Subscription:</span>
+                <span className={activeUser.plan === 'yearly' ? 'text-amber-400 font-extrabold' : 'text-indigo-400 font-extrabold'}>
+                  {activeUser.plan === 'yearly' ? 'Yearly VIP Plan (₹1,099/yr)' : 'Monthly Pro Plan (₹99/mo)'}
+                </span>
+                <span className="bg-emerald-500/20 text-emerald-300 text-[9px] font-bold px-1.5 py-0.5 rounded border border-emerald-500/30">
+                  Active
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-400 truncate hidden xs:block sm:block">
+                {activeUser.plan === 'yearly' 
+                  ? 'Unlimited Video Meetings, UNLIMITED Comics, Multilingual Podcasts & Voice AI' 
+                  : `Comics: ${activeUser.comicGenerationsUsed || 0}/3 used • Up to 100 meetings`}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => handleOpenPaymentModal(activeUser.plan === 'free' ? 'monthly' : 'yearly')}
+              className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl shadow-md flex items-center gap-1.5 transition-all cursor-pointer"
+            >
+              <QrCode className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Renew / Manage (Scan QR)</span>
+              <span className="sm:hidden">QR</span>
+            </button>
           </div>
         </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={() => handleOpenPaymentModal(activeUser.plan === 'free' ? 'monthly' : 'yearly')}
-            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl shadow-md shadow-indigo-600/30 flex items-center gap-1.5 transition-all cursor-pointer"
-          >
-            <QrCode className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Buy / Upgrade Subscription (Scan QR)</span>
-            <span className="sm:hidden">Pay via QR</span>
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* ========================================================================= */}
       {/* PAYMENT & UPI QR CODE MODAL */}
