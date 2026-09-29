@@ -55,10 +55,21 @@ import {
   Timer,
   Eye,
   EyeOff,
-  Key
+  Key,
+  QrCode,
+  CreditCard
 } from 'lucide-react';
+import paymentQrImage from './assets/payment_qr.jpg';
 
 export default function App() {
+  // =========================================================================
+  // PAYMENT & QR MODAL STATE
+  // =========================================================================
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedPlanForPayment, setSelectedPlanForPayment] = useState('monthly');
+  const [paymentUtr, setPaymentUtr] = useState('');
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
+
   // =========================================================================
   // AUTHENTICATION & LOGIN STATE (NAME, GMAIL, PASSWORD)
   // =========================================================================
@@ -755,12 +766,40 @@ export default function App() {
     setTimeout(() => setMonthlyPurgeMessage(null), 6000);
   };
 
-  // Plan Selection handler
+  // Payment Modal & Plan Selection handlers
+  const handleOpenPaymentModal = (planKey = 'monthly') => {
+    if (planKey === 'free') {
+      handleSelectPlan('free');
+      return;
+    }
+    setSelectedPlanForPayment(planKey);
+    setShowPaymentModal(true);
+  };
+
   const handleSelectPlan = (planKey) => {
     updateActiveUser(u => ({ ...u, plan: planKey }));
     const planNames = { free: "Free Tier", monthly: "Monthly Plan (₹99)", yearly: "Yearly Unlimited Plan (₹1099)" };
     setUpgradeNotification(`Plan updated to ${planNames[planKey]} for ${activeUser.name}!`);
     setTimeout(() => setUpgradeNotification(null), 4000);
+  };
+
+  const handleConfirmPayment = (e) => {
+    if (e) e.preventDefault();
+    setPaymentSubmitting(true);
+    setTimeout(() => {
+      updateActiveUser(u => ({
+        ...u,
+        plan: selectedPlanForPayment,
+        comicGenerationsUsed: selectedPlanForPayment === 'monthly' ? 0 : u.comicGenerationsUsed
+      }));
+      setPaymentSubmitting(false);
+      setShowPaymentModal(false);
+      setPaymentUtr('');
+      playChime();
+      const planLabel = selectedPlanForPayment === 'yearly' ? 'Yearly VIP Plan (₹1,099/yr)' : 'Monthly Plan (₹99/mo)';
+      setUpgradeNotification(`🎉 Payment verified! Account successfully upgraded to ${planLabel} for ${activeUser.name}!`);
+      setTimeout(() => setUpgradeNotification(null), 5000);
+    }, 700);
   };
 
   // Comic Generation Handler (Enforcing: 3 times in ₹99/mo, UNLIMITED in ₹1099/yr)
@@ -1001,7 +1040,7 @@ export default function App() {
   // VIEW 2: HOMEPAGE (MEETMEE DASHBOARD & INTELLIGENCE CENTER)
   // =========================================================================
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-blue-600 selection:text-white overflow-x-hidden">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-blue-600 selection:text-white overflow-x-hidden pb-24 sm:pb-28">
       
       {/* ========================================================================= */}
       {/* TOP HEADER: RESPONSIVE ACROSS ALL DEVICES (NO ALWAYS-ONLINE BADGE) */}
@@ -1678,14 +1717,15 @@ export default function App() {
                   </div>
 
                   <button
-                    onClick={() => handleSelectPlan('monthly')}
-                    className={`mt-6 w-full rounded-xl py-2.5 text-xs font-bold transition-all ${
+                    onClick={() => handleOpenPaymentModal('monthly')}
+                    className={`mt-6 w-full rounded-xl py-2.5 text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                       activeUser.plan === 'monthly'
                         ? 'bg-indigo-600 text-white cursor-default'
                         : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30'
                     }`}
                   >
-                    {activeUser.plan === 'monthly' ? 'Active Plan' : 'Subscribe for ₹99/month'}
+                    <QrCode className="h-4 w-4" />
+                    {activeUser.plan === 'monthly' ? 'Active Plan (Scan QR to Renew)' : 'Subscribe for ₹99/month (Scan QR)'}
                   </button>
                 </div>
 
@@ -1744,17 +1784,94 @@ export default function App() {
                   </div>
 
                   <button
-                    onClick={() => handleSelectPlan('yearly')}
-                    className={`mt-6 w-full rounded-xl py-2.5 text-xs font-bold transition-all ${
+                    onClick={() => handleOpenPaymentModal('yearly')}
+                    className={`mt-6 w-full rounded-xl py-2.5 text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                       activeUser.plan === 'yearly'
                         ? 'bg-amber-500 text-slate-950 cursor-default'
                         : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 shadow-lg shadow-amber-500/25'
                     }`}
                   >
-                    {activeUser.plan === 'yearly' ? 'Active Plan' : 'Subscribe for ₹1,099/year'}
+                    <QrCode className="h-4 w-4" />
+                    {activeUser.plan === 'yearly' ? 'Active Plan (Scan QR to Renew)' : 'Subscribe for ₹1,099/year (Scan QR)'}
                   </button>
                 </div>
 
+              </div>
+
+              {/* INLINE UPI SCAN & PAY SHOWCASE */}
+              <div className="mt-8 rounded-2xl border border-indigo-500/40 bg-gradient-to-br from-indigo-950/30 via-slate-900 to-slate-950 p-5 sm:p-6 shadow-2xl">
+                <div className="flex flex-col md:flex-row items-center gap-6">
+                  {/* QR Image Box */}
+                  <div className="shrink-0 flex flex-col items-center bg-white p-3.5 rounded-2xl shadow-xl border-4 border-indigo-500/30">
+                    <img 
+                      src={paymentQrImage} 
+                      alt="MeetMee UPI Payment QR Code" 
+                      className="w-48 h-48 object-contain rounded-lg"
+                    />
+                    <div className="mt-2 text-[10px] font-bold text-slate-800 flex items-center gap-1">
+                      <span>⚡ Scan with any UPI App</span>
+                    </div>
+                  </div>
+
+                  {/* Payment Details */}
+                  <div className="flex-1 text-center md:text-left space-y-3">
+                    <div className="inline-flex items-center gap-1.5 bg-indigo-500/20 text-indigo-300 text-[10px] font-bold px-2.5 py-1 rounded-full border border-indigo-500/30">
+                      <QrCode className="h-3.5 w-3.5" /> Instant UPI Payment Gateway
+                    </div>
+                    <h3 className="text-lg sm:text-xl font-bold text-white">
+                      Scan QR Code to Buy or Upgrade Subscription
+                    </h3>
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      Scan using Google Pay, PhonePe, Paytm, BHIM, Cred, or any UPI banking app. Choose your desired plan amount:
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenPaymentModal('monthly')}
+                        className={`p-3 rounded-xl border text-left transition-all ${
+                          selectedPlanForPayment === 'monthly'
+                            ? 'border-indigo-500 bg-indigo-950/40 ring-1 ring-indigo-500'
+                            : 'border-slate-800 bg-slate-900 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-bold text-white">Monthly Plan</span>
+                          <span className="text-xs font-extrabold text-indigo-400">₹99/mo</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-0.5">100 meetings + 3 comics/mo</p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleOpenPaymentModal('yearly')}
+                        className={`p-3 rounded-xl border text-left transition-all ${
+                          selectedPlanForPayment === 'yearly'
+                            ? 'border-amber-500 bg-amber-950/40 ring-1 ring-amber-500'
+                            : 'border-slate-800 bg-slate-900 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-bold text-white">Yearly VIP Plan</span>
+                          <span className="text-xs font-extrabold text-amber-400">₹1,099/yr</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-0.5">Unlimited meetings &amp; comics + Native AI</p>
+                      </button>
+                    </div>
+
+                    <div className="pt-2 flex flex-wrap gap-2 items-center justify-center md:justify-start">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenPaymentModal(selectedPlanForPayment)}
+                        className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 flex items-center gap-1.5 transition-all"
+                      >
+                        <CreditCard className="h-4 w-4" />
+                        <span>Open Payment Modal &amp; Enter UTR</span>
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -2708,8 +2825,120 @@ export default function App() {
         </div>
       )}
 
+      {/* ========================================================================= */}
+      {/* PERSISTENT CURRENT SUBSCRIPTION PLAN DISPLAY AT BOTTOM */}
+      {/* ========================================================================= */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-10 mb-6 w-full">
+        <div className={`rounded-2xl border p-4 sm:p-6 transition-all shadow-2xl relative overflow-hidden ${
+          activeUser.plan === 'yearly'
+            ? 'border-amber-500/60 bg-gradient-to-r from-amber-950/40 via-slate-900 to-amber-950/20 ring-1 ring-amber-500/30'
+            : activeUser.plan === 'monthly'
+              ? 'border-indigo-500/60 bg-gradient-to-r from-indigo-950/40 via-slate-900 to-indigo-950/20 ring-1 ring-indigo-500/30'
+              : 'border-blue-500/50 bg-gradient-to-r from-blue-950/30 via-slate-900 to-slate-950 ring-1 ring-blue-500/20'
+        }`}>
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+            {/* Plan Info Column */}
+            <div className="space-y-2.5 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  Current Subscription Plan:
+                </span>
+                {activeUser.plan === 'yearly' && (
+                  <span className="inline-flex items-center gap-1.5 bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-bold px-3 py-1 rounded-full shadow-sm">
+                    <Crown className="h-3.5 w-3.5 text-amber-400" />
+                    Yearly VIP All-Access Plan (₹1,099/yr)
+                  </span>
+                )}
+                {activeUser.plan === 'monthly' && (
+                  <span className="inline-flex items-center gap-1.5 bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 text-xs font-bold px-3 py-1 rounded-full shadow-sm">
+                    <Zap className="h-3.5 w-3.5 text-indigo-400" />
+                    Monthly Pro Plan (₹99/mo)
+                  </span>
+                )}
+                {activeUser.plan === 'free' && (
+                  <span className="inline-flex items-center gap-1.5 bg-blue-500/20 border border-blue-500/40 text-blue-300 text-xs font-bold px-3 py-1 rounded-full shadow-sm">
+                    <ShieldCheck className="h-3.5 w-3.5 text-blue-400" />
+                    Starter Free Tier (₹0)
+                  </span>
+                )}
+              </div>
+
+              {/* Status details & metrics grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1 text-xs">
+                <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-2.5">
+                  <span className="text-[10px] text-slate-400 block uppercase font-medium">Meeting Quota</span>
+                  <span className="text-white font-bold">
+                    {activeUser.plan === 'yearly' 
+                      ? 'Unlimited Access' 
+                      : activeUser.plan === 'monthly'
+                        ? `${activeUser.meetingsCount || 0} / 100 meetings`
+                        : `${activeUser.meetingsCount || 0} / 3 meetings`}
+                  </span>
+                </div>
+
+                <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-2.5">
+                  <span className="text-[10px] text-slate-400 block uppercase font-medium">Comic Generator</span>
+                  <span className="font-bold">
+                    {activeUser.plan === 'yearly' ? (
+                      <span className="text-amber-300">Unlimited Active</span>
+                    ) : activeUser.plan === 'monthly' ? (
+                      <span className="text-pink-300">{activeUser.comicGenerationsUsed || 0} / 3 used</span>
+                    ) : (
+                      <span className="text-rose-400">Locked (Upgrade)</span>
+                    )}
+                  </span>
+                </div>
+
+                <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-2.5">
+                  <span className="text-[10px] text-slate-400 block uppercase font-medium">Multilingual Podcast</span>
+                  <span className="font-bold">
+                    {activeUser.plan === 'yearly' ? (
+                      <span className="text-emerald-400">Active (NotebookLM)</span> 
+                    ) : (
+                      <span className="text-slate-500">Locked (Yearly only)</span>
+                    )}
+                  </span>
+                </div>
+
+                <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-2.5">
+                  <span className="text-[10px] text-slate-400 block uppercase font-medium">Native Voice AI</span>
+                  <span className="font-bold">
+                    {activeUser.plan === 'yearly' ? (
+                      <span className="text-amber-400">Active (Multi-dialect)</span> 
+                    ) : (
+                      <span className="text-slate-500">Locked (Yearly only)</span>
+                    )}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons Column */}
+            <div className="flex flex-col sm:flex-row lg:flex-col gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => handleOpenPaymentModal(activeUser.plan === 'free' ? 'monthly' : 'yearly')}
+                className="bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-500 hover:from-blue-500 hover:to-indigo-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer"
+              >
+                <QrCode className="h-4 w-4" />
+                <span>Buy / Upgrade Subscription (Scan QR)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('pricing')}
+                className="border border-slate-700 bg-slate-900/90 hover:bg-slate-800 text-slate-300 text-xs font-semibold px-4 py-2 rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <span>View Full Pricing Comparison</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Footer */}
-      <footer className="border-t border-slate-800 bg-slate-950/80 py-5 mt-8 text-center text-xs text-slate-500">
+      <footer className="border-t border-slate-800 bg-slate-950/80 py-5 mt-auto text-center text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div>
             MeetMee Multi-Tenant Intelligence &bull; Responsive on Mobile, Tablet &amp; Desktop
@@ -2723,6 +2952,183 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* ========================================================================= */}
+      {/* FIXED / DOCKED BOTTOM BAR (PERSISTENT PLAN STATUS & SCAN QR CTA) */}
+      {/* ========================================================================= */}
+      <div className="fixed bottom-0 inset-x-0 z-40 bg-slate-950/95 backdrop-blur-md border-t border-slate-800/90 py-2 px-3 sm:px-6 shadow-2xl flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 overflow-hidden">
+          <div className="h-7 w-7 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center shrink-0">
+            {activeUser.plan === 'yearly' ? (
+              <Crown className="h-4 w-4 text-amber-400" />
+            ) : activeUser.plan === 'monthly' ? (
+              <Zap className="h-4 w-4 text-indigo-400" />
+            ) : (
+              <ShieldCheck className="h-4 w-4 text-blue-400" />
+            )}
+          </div>
+          <div className="truncate">
+            <div className="text-xs font-bold text-white flex items-center gap-1.5 truncate">
+              <span className="text-slate-400">Current Plan:</span>
+              <span className={
+                activeUser.plan === 'yearly' ? 'text-amber-400' :
+                activeUser.plan === 'monthly' ? 'text-indigo-400' : 'text-blue-400'
+              }>
+                {activeUser.plan === 'yearly' ? 'Yearly VIP Plan (₹1,099/yr)' :
+                 activeUser.plan === 'monthly' ? 'Monthly Plan (₹99/mo)' : 'Free Tier (₹0)'}
+              </span>
+            </div>
+            <p className="text-[10px] text-slate-400 truncate hidden xs:block sm:block">
+              {activeUser.plan === 'yearly' 
+                ? 'Unlimited Meetings & Comic Generations Active' 
+                : activeUser.plan === 'monthly'
+                  ? `Comics: ${activeUser.comicGenerationsUsed || 0}/3 used • Up to 100 meetings`
+                  : `${activeUser.meetingsCount || 0}/3 meetings used • Comics & Podcasts Locked`}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => handleOpenPaymentModal(activeUser.plan === 'free' ? 'monthly' : 'yearly')}
+            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl shadow-md shadow-indigo-600/30 flex items-center gap-1.5 transition-all cursor-pointer"
+          >
+            <QrCode className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Buy / Upgrade Subscription (Scan QR)</span>
+            <span className="sm:hidden">Pay via QR</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* PAYMENT & UPI QR CODE MODAL */}
+      {/* ========================================================================= */}
+      {showPaymentModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto animate-in fade-in">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-700/80 rounded-2xl p-5 sm:p-6 shadow-2xl space-y-4 my-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="h-8 w-8 rounded-lg bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400">
+                  <QrCode className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Buy Subscription via UPI QR</h3>
+                  <p className="text-[11px] text-slate-400">Scan &amp; pay instantly with any UPI app</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPaymentModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Plan Selector Buttons */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedPlanForPayment('monthly')}
+                className={`p-3 rounded-xl border text-left transition-all ${
+                  selectedPlanForPayment === 'monthly'
+                    ? 'border-indigo-500 bg-indigo-950/40 ring-2 ring-indigo-500/40'
+                    : 'border-slate-800 bg-slate-950 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold text-white">Monthly Plan</span>
+                  <span className="text-xs font-extrabold text-indigo-400">₹99</span>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">100 meetings + 3 comics/mo</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedPlanForPayment('yearly')}
+                className={`p-3 rounded-xl border text-left transition-all ${
+                  selectedPlanForPayment === 'yearly'
+                    ? 'border-amber-500 bg-amber-950/40 ring-2 ring-amber-500/40'
+                    : 'border-slate-800 bg-slate-950 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold text-white">Yearly VIP Plan</span>
+                  <span className="text-xs font-extrabold text-amber-400">₹1,099</span>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">Unlimited meetings &amp; comics</p>
+              </button>
+            </div>
+
+            {/* Official User QR Code Display Container */}
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 flex flex-col items-center text-center space-y-3">
+              <div className="bg-white p-3 rounded-2xl shadow-xl border-4 border-indigo-500/40 flex items-center justify-center">
+                <img
+                  src={paymentQrImage}
+                  alt="MeetMee Official UPI Payment QR Code"
+                  className="w-52 h-52 sm:w-56 sm:h-56 object-contain rounded-lg"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <div className="text-sm font-bold text-white">
+                  Amount to Pay: <span className="text-emerald-400 text-base font-extrabold">
+                    {selectedPlanForPayment === 'yearly' ? '₹1,099' : '₹99'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Scan using <strong>Google Pay, PhonePe, Paytm, BHIM, Cred, or any UPI App</strong>
+                </p>
+              </div>
+            </div>
+
+            {/* Payment Confirmation Form */}
+            <form onSubmit={handleConfirmPayment} className="space-y-3">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                  UPI Reference / UTR Number (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={paymentUtr}
+                  onChange={(e) => setPaymentUtr(e.target.value)}
+                  placeholder="e.g. 428901234567 (12-digit transaction ID)"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowPaymentModal(false)}
+                  className="rounded-xl border border-slate-700 bg-slate-800 text-slate-300 text-xs font-semibold px-4 py-2 hover:bg-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={paymentSubmitting}
+                  className="rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold px-5 py-2 shadow-lg shadow-emerald-600/30 flex items-center gap-1.5 transition-all disabled:opacity-60 cursor-pointer"
+                >
+                  {paymentSubmitting ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      <span>Verifying Payment...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span>Confirm Payment &amp; Activate Plan</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );
