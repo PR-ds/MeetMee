@@ -62,14 +62,91 @@ import {
 import paymentQrImage from './assets/payment_qr.jpg';
 
 // =========================================================================
-// DESIGNATED VIP SUBSCRIPTION ACCOUNT (UNLIMITED ACCESS)
+// DESIGNATED VIP SUBSCRIPTION ACCOUNT (LIFETIME FREE VIP ALL TIME)
 // =========================================================================
 export const VIP_ACCOUNT_CONFIG = {
   name: "ABIRAMI P",
   email: "prabhuragul97892@gmail.com",
   password: "ragul@2007",
   plan: "yearly",
+  isLifetimeVip: true,
   role: "VIP Executive Member"
+};
+
+// =========================================================================
+// SUBSCRIPTION VALIDITY & EXPIRY REMINDER HELPER
+// =========================================================================
+export const getSubscriptionValidity = (user) => {
+  if (!user) {
+    return {
+      isLifetime: false,
+      daysRemaining: 0,
+      expiryDateFormatted: "No Plan",
+      isEndingSoon: false,
+      isExpired: false,
+      badgeText: "Free Tier",
+      statusText: "Free Tier Active"
+    };
+  }
+
+  const isVip = user.email?.toLowerCase() === VIP_ACCOUNT_CONFIG.email.toLowerCase() || user.isLifetimeVip;
+  if (isVip) {
+    return {
+      isLifetime: true,
+      daysRemaining: Infinity,
+      expiryDateFormatted: "Lifetime (Never Expires)",
+      isEndingSoon: false,
+      isExpired: false,
+      badgeText: "Lifetime VIP (Free All Time)",
+      statusText: "Free All Time • Unlimited Access Forever"
+    };
+  }
+
+  if (user.plan === 'free') {
+    return {
+      isLifetime: false,
+      daysRemaining: 0,
+      expiryDateFormatted: "Free Tier",
+      isEndingSoon: false,
+      isExpired: false,
+      badgeText: "Free Tier (3 calls)",
+      statusText: "Free Tier (3 meetings quota)"
+    };
+  }
+
+  // User with paid plan: check validity
+  const now = Date.now();
+  let expiryTime = user.subscriptionExpiryDate ? new Date(user.subscriptionExpiryDate).getTime() : null;
+
+  // Fallback if subscriptionExpiryDate not set: 30 days for monthly, 365 days for yearly from start or now
+  if (!expiryTime || isNaN(expiryTime)) {
+    const durationDays = user.plan === 'yearly' ? 365 : 30;
+    const startTime = user.subscriptionStartDate ? new Date(user.subscriptionStartDate).getTime() : now;
+    expiryTime = startTime + durationDays * 24 * 60 * 60 * 1000;
+  }
+
+  const msRemaining = expiryTime - now;
+  const daysRemaining = Math.max(0, Math.ceil(msRemaining / (1000 * 60 * 60 * 24)));
+  const expiryDate = new Date(expiryTime);
+  const expiryDateFormatted = expiryDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const isExpired = daysRemaining <= 0;
+  const isEndingSoon = !isExpired && daysRemaining <= 5;
+
+  return {
+    isLifetime: false,
+    daysRemaining,
+    expiryDateFormatted,
+    isEndingSoon,
+    isExpired,
+    badgeText: isExpired 
+      ? `Expired (${expiryDateFormatted})`
+      : `${daysRemaining}d remaining (${expiryDateFormatted})`,
+    statusText: isExpired
+      ? `Subscription expired on ${expiryDateFormatted}. Renew via QR.`
+      : isEndingSoon
+        ? `⚠️ Ending in ${daysRemaining} days (Expires ${expiryDateFormatted})`
+        : `Active: ${daysRemaining} days remaining (Expires ${expiryDateFormatted})`
+  };
 };
 
 export default function App() {
@@ -122,6 +199,9 @@ export default function App() {
               ...u,
               name: isVip ? VIP_ACCOUNT_CONFIG.name : u.name,
               plan: isVip ? 'yearly' : u.plan,
+              isLifetimeVip: isVip,
+              subscriptionExpiryDate: isVip ? null : (u.subscriptionExpiryDate || null),
+              subscriptionStartDate: isVip ? null : (u.subscriptionStartDate || null),
               password: isVip ? VIP_ACCOUNT_CONFIG.password : u.password,
               role: isVip ? VIP_ACCOUNT_CONFIG.role : (u.role || "Corporate Professional"),
               meetings: Array.isArray(u.meetings) ? u.meetings : [],
@@ -139,6 +219,9 @@ export default function App() {
               password: VIP_ACCOUNT_CONFIG.password,
               role: VIP_ACCOUNT_CONFIG.role,
               plan: "yearly",
+              isLifetimeVip: true,
+              subscriptionExpiryDate: null,
+              subscriptionStartDate: new Date().toISOString(),
               meetingsCount: 0,
               comicGenerationsUsed: 0,
               meetings: [],
@@ -146,7 +229,7 @@ export default function App() {
                 {
                   role: 'assistant',
                   lang: 'en',
-                  text: `Welcome ABIRAMI P! Your Yearly VIP Subscription is active with unlimited meetings, comics, podcasts, and native voice AI.`
+                  text: `Welcome ABIRAMI P! Your Lifetime VIP Subscription is active for free all time with unlimited meetings, comics, podcasts, and native voice AI.`
                 }
               ]
             });
@@ -164,6 +247,9 @@ export default function App() {
       password: VIP_ACCOUNT_CONFIG.password,
       role: VIP_ACCOUNT_CONFIG.role,
       plan: "yearly",
+      isLifetimeVip: true,
+      subscriptionExpiryDate: null,
+      subscriptionStartDate: new Date().toISOString(),
       meetingsCount: 0,
       comicGenerationsUsed: 0,
       meetings: [],
@@ -171,7 +257,7 @@ export default function App() {
         {
           role: 'assistant',
           lang: 'en',
-          text: `Welcome ABIRAMI P! Your Yearly VIP Subscription is active with unlimited meetings, comics, podcasts, and native voice AI.`
+          text: `Welcome ABIRAMI P! Your Lifetime VIP Subscription is active for free all time with unlimited meetings, comics, podcasts, and native voice AI.`
         }
       ]
     }];
@@ -193,11 +279,16 @@ export default function App() {
     password: VIP_ACCOUNT_CONFIG.password,
     role: VIP_ACCOUNT_CONFIG.role,
     plan: "yearly",
+    isLifetimeVip: true,
+    subscriptionExpiryDate: null,
+    subscriptionStartDate: new Date().toISOString(),
     meetingsCount: 0,
     comicGenerationsUsed: 0,
     meetings: [],
     assistantHistory: []
   };
+
+  const subscriptionValidity = getSubscriptionValidity(activeUser);
 
   // Sync users, payment plan & session to localStorage v6
   useEffect(() => {
@@ -1008,9 +1099,18 @@ export default function App() {
     if (e) e.preventDefault();
     setPaymentSubmitting(true);
     setTimeout(() => {
+      const isVipUser = activeUser.email?.toLowerCase() === VIP_ACCOUNT_CONFIG.email.toLowerCase() || activeUser.isLifetimeVip;
+      const durationDays = selectedPlanForPayment === 'yearly' ? 365 : 30;
+      const now = new Date();
+      const expiry = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
+
       updateActiveUser(u => ({
         ...u,
-        plan: selectedPlanForPayment,
+        plan: isVipUser ? 'yearly' : selectedPlanForPayment,
+        isLifetimeVip: isVipUser,
+        subscriptionStartDate: now.toISOString(),
+        subscriptionDurationDays: durationDays,
+        subscriptionExpiryDate: isVipUser ? null : expiry.toISOString(),
         comicGenerationsUsed: selectedPlanForPayment === 'monthly' ? 0 : u.comicGenerationsUsed
       }));
       setPaymentSubmitting(false);
@@ -1018,7 +1118,10 @@ export default function App() {
       setPaymentUtr('');
       playChime();
       const planLabel = selectedPlanForPayment === 'yearly' ? 'Yearly VIP Plan (₹1,099/yr)' : 'Monthly Plan (₹99/mo)';
-      setUpgradeNotification(`🎉 Payment verified! Account successfully upgraded to ${planLabel} for ${activeUser.name}!`);
+      const validityMsg = isVipUser 
+        ? "Lifetime VIP Free All Time" 
+        : `Validity: ${durationDays} days (until ${expiry.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })})`;
+      setUpgradeNotification(`🎉 Payment verified! Account upgraded to ${planLabel} for ${activeUser.name}! ${validityMsg}`);
       setTimeout(() => setUpgradeNotification(null), 5000);
     }, 700);
   };
@@ -1283,20 +1386,47 @@ export default function App() {
           {/* User Profile, Plan & Logout Controls */}
           <div className="flex items-center gap-2 sm:gap-3">
             
-            {/* Active Subscription Badge */}
+            {/* Active Subscription Badge with Validity */}
             <button
               onClick={() => setActiveTab('pricing')}
-              className="flex items-center gap-1 rounded-lg sm:rounded-xl border border-amber-500/30 bg-amber-500/10 px-2 sm:px-3 py-1.5 text-[11px] sm:text-xs font-semibold text-amber-300 hover:bg-amber-500/20 transition-all shrink-0"
-              title="Click to view or upgrade subscription plan"
+              className={`flex items-center gap-1.5 rounded-lg sm:rounded-xl border px-2 sm:px-3 py-1.5 text-[11px] sm:text-xs font-semibold transition-all shrink-0 ${
+                subscriptionValidity.isLifetime
+                  ? 'border-amber-500/50 bg-gradient-to-r from-amber-500/20 to-amber-600/10 text-amber-300 hover:bg-amber-500/30'
+                  : subscriptionValidity.isExpired
+                    ? 'border-rose-500/50 bg-rose-500/20 text-rose-300 hover:bg-rose-500/30'
+                    : subscriptionValidity.isEndingSoon
+                      ? 'border-amber-500/50 bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 animate-pulse'
+                      : activeUser.plan === 'yearly'
+                        ? 'border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
+                        : activeUser.plan === 'monthly'
+                          ? 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20'
+                          : 'border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800'
+              }`}
+              title="Click to view subscription validity & plan options"
             >
-              {activeUser.plan === 'yearly' && <Crown className="h-3.5 w-3.5 text-amber-400 shrink-0" />}
-              {activeUser.plan === 'monthly' && <Zap className="h-3.5 w-3.5 text-indigo-400 shrink-0" />}
-              {activeUser.plan === 'free' && <ShieldCheck className="h-3.5 w-3.5 text-slate-400 shrink-0" />}
-              <span className="capitalize">{activeUser.plan}</span>
-              {activeUser.plan === 'free' && (
-                <span className="ml-1 bg-amber-500/20 text-amber-300 text-[10px] px-1.5 py-0.2 rounded font-mono">
-                  {activeUser.meetingsCount}/3
-                </span>
+              {subscriptionValidity.isLifetime ? (
+                <>
+                  <Crown className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                  <span>VIP Lifetime (Free)</span>
+                </>
+              ) : activeUser.plan === 'yearly' ? (
+                <>
+                  <Crown className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                  <span>Yearly ({subscriptionValidity.daysRemaining}d left)</span>
+                </>
+              ) : activeUser.plan === 'monthly' ? (
+                <>
+                  <Zap className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
+                  <span>Monthly ({subscriptionValidity.daysRemaining}d left)</span>
+                </>
+              ) : (
+                <>
+                  <ShieldCheck className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                  <span>Free Tier</span>
+                  <span className="ml-1 bg-blue-500/20 text-blue-300 text-[10px] px-1.5 py-0.2 rounded font-mono">
+                    {activeUser.meetingsCount}/3
+                  </span>
+                </>
               )}
             </button>
 
@@ -1342,6 +1472,71 @@ export default function App() {
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8">
+
+        {/* ========================================================================= */}
+        {/* SUBSCRIPTION REMINDER NOTIFICATIONS (FOR OTHER USERS WITH EXPIRING PLANS) */}
+        {/* ========================================================================= */}
+        {!subscriptionValidity.isLifetime && activeUser.plan !== 'free' && (
+          <>
+            {subscriptionValidity.isEndingSoon && (
+              <div className="rounded-2xl border border-amber-500/60 bg-gradient-to-r from-amber-950/60 via-slate-900 to-amber-950/30 p-4 text-xs text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xl animate-in slide-in-from-top">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0">
+                    <Clock className="h-5 w-5 text-amber-400 animate-pulse" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-amber-300 text-sm flex items-center gap-2">
+                      <span>Subscription Ending Soon!</span>
+                      <span className="bg-amber-500/20 text-amber-300 text-[10px] px-2 py-0.5 rounded-full border border-amber-500/30">
+                        {subscriptionValidity.daysRemaining} {subscriptionValidity.daysRemaining === 1 ? 'Day' : 'Days'} Left
+                      </span>
+                    </div>
+                    <p className="text-slate-300 mt-0.5">
+                      Your {activeUser.plan === 'yearly' ? 'Yearly VIP' : 'Monthly Pro'} plan validity ends on <strong>{subscriptionValidity.expiryDateFormatted}</strong>. Renew via UPI QR now to avoid any interruption to your unlimited meeting intelligence.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleOpenPaymentModal(activeUser.plan)}
+                  className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer shrink-0 self-start sm:self-auto"
+                >
+                  <QrCode className="h-4 w-4" />
+                  <span>Renew Subscription (Scan QR)</span>
+                </button>
+              </div>
+            )}
+
+            {subscriptionValidity.isExpired && (
+              <div className="rounded-2xl border border-rose-500/60 bg-gradient-to-r from-rose-950/60 via-slate-900 to-rose-950/30 p-4 text-xs text-rose-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xl animate-in slide-in-from-top">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center shrink-0">
+                    <AlertTriangle className="h-5 w-5 text-rose-400" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-rose-300 text-sm flex items-center gap-2">
+                      <span>Subscription Has Expired!</span>
+                      <span className="bg-rose-500/20 text-rose-300 text-[10px] px-2 py-0.5 rounded-full border border-rose-500/30">
+                        Expired on {subscriptionValidity.expiryDateFormatted}
+                      </span>
+                    </div>
+                    <p className="text-slate-300 mt-0.5">
+                      Your plan has reached its validity date. Please scan the official UPI QR to renew and restore full unlimited AI capabilities.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleOpenPaymentModal('monthly')}
+                  className="bg-rose-500 hover:bg-rose-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer shrink-0 self-start sm:self-auto"
+                >
+                  <QrCode className="h-4 w-4" />
+                  <span>Renew via UPI QR</span>
+                </button>
+              </div>
+            )}
+          </>
+        )}
         
         {/* ========================================================================= */}
         {/* HERO & MEETING DISPATCH SECTION */}
@@ -3073,7 +3268,7 @@ export default function App() {
           }`}>
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
               {/* Plan Info Column */}
-              <div className="space-y-2.5 flex-1">
+              <div className="space-y-3 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
                     Active Purchased Subscription:
@@ -3081,7 +3276,9 @@ export default function App() {
                   {activeUser.plan === 'yearly' && (
                     <span className="inline-flex items-center gap-1.5 bg-amber-500/20 border border-amber-500/50 text-amber-300 text-xs font-bold px-3 py-1 rounded-full shadow-md">
                       <Crown className="h-4 w-4 text-amber-400" />
-                      Yearly VIP All-Access Plan (₹1,099/yr) &bull; Verified Active
+                      {subscriptionValidity.isLifetime 
+                        ? 'Yearly VIP All-Access Plan • 👑 Free All Time (Perpetual VIP)' 
+                        : 'Yearly VIP All-Access Plan (₹1,099/yr) • Verified Active'}
                     </span>
                   )}
                   {activeUser.plan === 'monthly' && (
@@ -3092,8 +3289,18 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Status details & metrics grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1 text-xs">
+                {/* Lifetime VIP Notice Banner for ABIRAMI P */}
+                {subscriptionValidity.isLifetime && (
+                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-xs text-amber-200 flex items-center gap-2.5">
+                    <Crown className="h-4 w-4 text-amber-400 shrink-0" />
+                    <span>
+                      <strong>Perpetual Lifetime VIP Active:</strong> User <strong>{VIP_ACCOUNT_CONFIG.name}</strong> enjoys VIP Subscription free for all time with zero expiry dates or renewal fees.
+                    </span>
+                  </div>
+                )}
+
+                {/* Status details & metrics grid (5 cards including Plan Validity) */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pt-1 text-xs">
                   <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-2.5">
                     <span className="text-[10px] text-slate-400 block uppercase font-medium">Meeting Quota</span>
                     <span className="text-white font-bold">
@@ -3135,19 +3342,44 @@ export default function App() {
                       )}
                     </span>
                   </div>
+
+                  {/* 5th Card: Plan Validity & Days Remaining */}
+                  <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-2.5 col-span-2 sm:col-span-1">
+                    <span className="text-[10px] text-slate-400 block uppercase font-medium">Plan Validity</span>
+                    <span className="font-bold">
+                      {subscriptionValidity.isLifetime ? (
+                        <span className="text-amber-300 flex items-center gap-1">
+                          <Crown className="h-3 w-3" /> Free All Time
+                        </span>
+                      ) : subscriptionValidity.isExpired ? (
+                        <span className="text-rose-400">Expired ({subscriptionValidity.expiryDateFormatted})</span>
+                      ) : subscriptionValidity.isEndingSoon ? (
+                        <span className="text-amber-400 animate-pulse">{subscriptionValidity.daysRemaining}d left (Expires {subscriptionValidity.expiryDateFormatted})</span>
+                      ) : (
+                        <span className="text-emerald-400">{subscriptionValidity.daysRemaining}d left (Expires {subscriptionValidity.expiryDateFormatted})</span>
+                      )}
+                    </span>
+                  </div>
                 </div>
               </div>
 
               {/* Action Buttons Column */}
               <div className="flex flex-col sm:flex-row lg:flex-col gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => handleOpenPaymentModal(activeUser.plan === 'monthly' ? 'yearly' : 'monthly')}
-                  className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer"
-                >
-                  <QrCode className="h-4 w-4" />
-                  <span>Renew / Upgrade Plan (Scan QR)</span>
-                </button>
+                {subscriptionValidity.isLifetime ? (
+                  <div className="bg-amber-500/20 border border-amber-500/50 text-amber-300 text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg flex items-center justify-center gap-2">
+                    <Crown className="h-4 w-4 text-amber-400" />
+                    <span>Free VIP All Time</span>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenPaymentModal(activeUser.plan === 'monthly' ? 'yearly' : 'monthly')}
+                    className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer"
+                  >
+                    <QrCode className="h-4 w-4" />
+                    <span>Renew / Upgrade Plan (Scan QR)</span>
+                  </button>
+                )}
 
                 <button
                   type="button"
@@ -3224,28 +3456,51 @@ export default function App() {
                 <span className={activeUser.plan === 'yearly' ? 'text-amber-400 font-extrabold' : 'text-indigo-400 font-extrabold'}>
                   {activeUser.plan === 'yearly' ? 'Yearly VIP Plan (₹1,099/yr)' : 'Monthly Pro Plan (₹99/mo)'}
                 </span>
-                <span className="bg-emerald-500/20 text-emerald-300 text-[9px] font-bold px-1.5 py-0.5 rounded border border-emerald-500/30">
-                  Active
-                </span>
+                {subscriptionValidity.isLifetime ? (
+                  <span className="bg-amber-500/20 text-amber-300 text-[9px] font-bold px-1.5 py-0.5 rounded border border-amber-500/30">
+                    👑 Free All Time
+                  </span>
+                ) : subscriptionValidity.isExpired ? (
+                  <span className="bg-rose-500/20 text-rose-300 text-[9px] font-bold px-1.5 py-0.5 rounded border border-rose-500/30 animate-pulse">
+                    Expired
+                  </span>
+                ) : subscriptionValidity.isEndingSoon ? (
+                  <span className="bg-amber-500/20 text-amber-300 text-[9px] font-bold px-1.5 py-0.5 rounded border border-amber-500/30">
+                    {subscriptionValidity.daysRemaining}d Left
+                  </span>
+                ) : (
+                  <span className="bg-emerald-500/20 text-emerald-300 text-[9px] font-bold px-1.5 py-0.5 rounded border border-emerald-500/30">
+                    {subscriptionValidity.daysRemaining}d Left
+                  </span>
+                )}
               </div>
               <p className="text-[10px] text-slate-400 truncate hidden xs:block sm:block">
-                {activeUser.plan === 'yearly' 
-                  ? 'Unlimited Video Meetings, UNLIMITED Comics, Multilingual Podcasts & Voice AI' 
-                  : `Comics: ${activeUser.comicGenerationsUsed || 0}/3 used • Up to 100 meetings`}
+                {subscriptionValidity.isLifetime
+                  ? '👑 Perpetual Free VIP • Unlimited Video Meetings, UNLIMITED Comics, Multilingual Podcasts & Voice AI Forever'
+                  : activeUser.plan === 'yearly' 
+                    ? `Unlimited Video Meetings, UNLIMITED Comics, Multilingual Podcasts & Voice AI • Valid until ${subscriptionValidity.expiryDateFormatted}` 
+                    : `Comics: ${activeUser.comicGenerationsUsed || 0}/3 used • Up to 100 meetings • Valid until ${subscriptionValidity.expiryDateFormatted}`}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => handleOpenPaymentModal(activeUser.plan === 'free' ? 'monthly' : 'yearly')}
-              className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl shadow-md flex items-center gap-1.5 transition-all cursor-pointer"
-            >
-              <QrCode className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Renew / Manage (Scan QR)</span>
-              <span className="sm:hidden">QR</span>
-            </button>
+            {subscriptionValidity.isLifetime ? (
+              <span className="bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-bold px-3 py-1.5 rounded-xl hidden sm:inline-flex items-center gap-1.5">
+                <Crown className="h-3.5 w-3.5 text-amber-400" />
+                <span>Lifetime Free VIP</span>
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => handleOpenPaymentModal(activeUser.plan === 'free' ? 'monthly' : 'yearly')}
+                className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl shadow-md flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <QrCode className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Renew / Manage (Scan QR)</span>
+                <span className="sm:hidden">QR</span>
+              </button>
+            )}
           </div>
         </div>
       )}
