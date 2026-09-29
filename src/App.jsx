@@ -42,6 +42,7 @@ import {
   ChevronDown,
   PlusCircle,
   LogIn,
+  LogOut,
   ArrowRight,
   RefreshCw,
   Search,
@@ -51,16 +52,37 @@ import {
   Plus,
   Share2,
   UploadCloud,
-  Timer
+  Timer,
+  Eye,
+  EyeOff,
+  Key
 } from 'lucide-react';
 
 export default function App() {
+  // =========================================================================
+  // AUTHENTICATION & LOGIN STATE (NAME, GMAIL, PASSWORD)
+  // =========================================================================
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+    try {
+      return localStorage.getItem('meetmee_is_logged_in_v5') === 'true';
+    } catch (e) {
+      return false;
+    }
+  });
+
+  const [loginName, setLoginName] = useState('');
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSignUpMode, setIsSignUpMode] = useState(false);
+  const [loginError, setLoginError] = useState(null);
+
   // =========================================================================
   // MULTI-USER STATE & LOCAL STORAGE PERSISTENCE (CLEAN STATE, NO MOCK DATA)
   // =========================================================================
   const [users, setUsers] = useState(() => {
     try {
-      const saved = localStorage.getItem('meetmee_users_v4');
+      const saved = localStorage.getItem('meetmee_users_v5');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
@@ -68,57 +90,120 @@ export default function App() {
     } catch (e) {
       console.error("Error loading users:", e);
     }
-    return [
-      {
-        id: "usr-guest-01",
-        name: "New Team Member",
-        email: "member@company.com",
+    return [];
+  });
+
+  const [activeUserId, setActiveUserId] = useState(() => {
+    try {
+      const savedId = localStorage.getItem('meetmee_active_user_id_v5');
+      if (savedId) return savedId;
+    } catch (e) {}
+    return null;
+  });
+
+  // Current Active User
+  const activeUser = users.find(u => u.id === activeUserId) || users[0] || {
+    id: "usr-default",
+    name: "User",
+    email: "user@gmail.com",
+    role: "Corporate Professional",
+    plan: "free",
+    meetingsCount: 0,
+    comicGenerationsUsed: 0,
+    meetings: [],
+    assistantHistory: []
+  };
+
+  // Sync users & session to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('meetmee_users_v5', JSON.stringify(users));
+      if (activeUserId) localStorage.setItem('meetmee_active_user_id_v5', activeUserId);
+      localStorage.setItem('meetmee_is_logged_in_v5', isLoggedIn ? 'true' : 'false');
+    } catch (e) {
+      console.error("Error saving users to storage:", e);
+    }
+  }, [users, activeUserId, isLoggedIn]);
+
+  // Login Handler (Requires: Name, Gmail, Password)
+  const handleAuthSubmit = (e) => {
+    e.preventDefault();
+    setLoginError(null);
+
+    const name = loginName.trim();
+    const email = loginEmail.trim().toLowerCase();
+    const pass = loginPassword.trim();
+
+    if (!name) {
+      setLoginError("Please enter your full name.");
+      return;
+    }
+    if (!email || !email.includes('@')) {
+      setLoginError("Please enter a valid Gmail / Email address.");
+      return;
+    }
+    if (!pass || pass.length < 5) {
+      setLoginError("Password must be at least 5 characters long.");
+      return;
+    }
+
+    // Check if user already exists
+    const existing = users.find(u => u.email === email);
+    if (existing) {
+      // Log in as existing user
+      setActiveUserId(existing.id);
+      setIsLoggedIn(true);
+      setLoginPassword('');
+    } else {
+      // Register fresh user
+      const newUserId = `usr-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
+      const newUser = {
+        id: newUserId,
+        name: name,
+        email: email,
+        password: pass,
         role: "Corporate Professional",
         plan: "free",
         meetingsCount: 0,
+        comicGenerationsUsed: 0, // Gated: 0/3 on ₹99, unlimited on ₹1099
         meetings: [],
         assistantHistory: [
           {
             role: 'assistant',
             lang: 'en',
-            text: 'Hello! I am your Native Meeting Assistant. Ask me anything about your upcoming calls, agendas, or meeting summaries.'
+            text: `Welcome ${name}! I am your AI Meeting Assistant. Ready to transcribe, summarize, and assist on your calls.`
           }
         ]
-      }
-    ];
-  });
-
-  const [activeUserId, setActiveUserId] = useState(() => {
-    try {
-      const savedId = localStorage.getItem('meetmee_active_user_id_v4');
-      if (savedId) return savedId;
-    } catch (e) {}
-    return "usr-guest-01";
-  });
-
-  // Current Active User
-  const activeUser = users.find(u => u.id === activeUserId) || users[0] || {
-    id: "usr-guest-01",
-    name: "New Team Member",
-    email: "member@company.com",
-    role: "Corporate Professional",
-    plan: "free",
-    meetingsCount: 0,
-    meetings: [],
-    assistantHistory: []
+      };
+      setUsers(prev => [newUser, ...prev]);
+      setActiveUserId(newUserId);
+      setIsLoggedIn(true);
+      setLoginPassword('');
+    }
   };
 
-  // Sync users to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem('meetmee_users_v4', JSON.stringify(users));
-      localStorage.setItem('meetmee_active_user_id_v4', activeUserId);
-    } catch (e) {
-      console.error("Error saving users to storage:", e);
-    }
-  }, [users, activeUserId]);
+  // Quick Demo Login helper for instant access
+  const handleQuickDemoLogin = (demoName, demoEmail) => {
+    setLoginName(demoName);
+    setLoginEmail(demoEmail);
+    setLoginPassword("meetmee123");
+    setLoginError(null);
+  };
 
-  // User Switcher Modal State
+  // Logout Handler
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    setIsBotJoined(false);
+    setNativeBotTelemetry(null);
+    setIsPopupVisible(false);
+    if (isLiveListening && speechRecognitionInstance) {
+      speechRecognitionInstance.stop();
+      setIsLiveListening(false);
+    }
+    localStorage.setItem('meetmee_is_logged_in_v5', 'false');
+  };
+
+  // Switch User Modal State
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [isAddUserMode, setIsAddUserMode] = useState(false);
   const [newUserName, setNewUserName] = useState('');
@@ -157,9 +242,8 @@ export default function App() {
   const [historySearchQuery, setHistorySearchQuery] = useState('');
   const [historyFilter, setHistoryFilter] = useState('all'); // 'all', 'permanent', 'expiring'
 
-  // Email delivery state & custom email input
+  // Email delivery state
   const [emailSent, setEmailSent] = useState(false);
-  const [customEmailTarget, setCustomEmailTarget] = useState('');
 
   // Podcast player state
   const [podcastLang, setPodcastLang] = useState('en');
@@ -170,7 +254,7 @@ export default function App() {
   const [assistantQuery, setAssistantQuery] = useState('');
   const [isAssistantSpeaking, setIsAssistantSpeaking] = useState(false);
 
-  // New Useful Feature: Live Meeting Stopwatch Timer
+  // Live Meeting Stopwatch Timer
   const [meetingTimerSeconds, setMeetingTimerSeconds] = useState(0);
   useEffect(() => {
     let interval = null;
@@ -190,15 +274,14 @@ export default function App() {
     return `${m}:${s}`;
   };
 
-  // New Useful Feature: Custom Action Item Input
+  // Custom Action Item Input
   const [newActionItemTask, setNewActionItemTask] = useState('');
   const [newActionItemOwner, setNewActionItemOwner] = useState('');
 
-  // Audio file upload state (for in-person or recorded calls)
+  // Audio file upload state
   const fileInputRef = useRef(null);
-  const [uploadedFileName, setUploadedFileName] = useState(null);
 
-  // Helpers to update active user's fields
+  // Helper to update active user's fields
   const updateActiveUser = (updater) => {
     setUsers(prev => prev.map(u => {
       if (u.id === activeUser.id) {
@@ -230,10 +313,11 @@ export default function App() {
     const freshUser = {
       id: newId,
       name: newUserName.trim(),
-      email: newUserEmail.trim(),
+      email: newUserEmail.trim().toLowerCase(),
       role: newUserRole.trim() || "Corporate Professional",
       plan: "free",
       meetingsCount: 0,
+      comicGenerationsUsed: 0,
       meetings: [],
       assistantHistory: [
         {
@@ -250,7 +334,7 @@ export default function App() {
     setNewUserEmail('');
     setIsAddUserMode(false);
     setIsUserModalOpen(false);
-    setUpgradeNotification(`Switched to new user account: ${freshUser.name}`);
+    setUpgradeNotification(`Switched to user account: ${freshUser.name}`);
     setTimeout(() => setUpgradeNotification(null), 4000);
   };
 
@@ -278,12 +362,10 @@ export default function App() {
       gain.connect(ctx.destination);
       osc.start();
       osc.stop(ctx.currentTime + 0.4);
-    } catch (e) {
-      // AudioContext fallback
-    }
+    } catch (e) {}
   };
 
-  // Quick Preset Meeting loader for instant testing
+  // Quick Preset Meeting loader
   const handleApplyPreset = (presetName, presetUrl) => {
     setMeetingTitle(presetName);
     setMeetingUrl(presetUrl);
@@ -325,7 +407,6 @@ export default function App() {
         ],
         anchors: [
           { concept: "Proprietary Headless Bot", hint: "Zero third-party vendor dependencies; headless Chromium handles media loopback." },
-          { concept: "Always-Online Presence", hint: "User token remains in call even if local browser window closes or battery depletes." },
           { concept: "30-Day Auto-Purge", hint: "Unsaved meetings purge monthly unless marked Save Permanently." }
         ],
         actions: [
@@ -428,8 +509,7 @@ export default function App() {
               "Real-time mentor address detector active on incoming audio packets."
             ],
             anchors: [
-              { concept: "Real-Time Speech Detection", hint: "Monitors participant voices and triggers contextual popup solely when addressed." },
-              { concept: "Local Stream Privacy", hint: "Captured streams are processed without external vendor recording lock-in." }
+              { concept: "Real-Time Speech Detection", hint: "Monitors participant voices and triggers contextual popup solely when addressed." }
             ],
             actions: [
               { id: 'act-live-1', task: "Review live speech transcript notes", owner: activeUser.name, deadline: "Today", completed: false }
@@ -450,7 +530,7 @@ export default function App() {
     }
   };
 
-  // Audio File Upload Handler (Useful for in-person or recorded calls)
+  // Audio File Upload Handler
   const handleAudioFileUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -461,9 +541,7 @@ export default function App() {
       return;
     }
 
-    setUploadedFileName(file.name);
     playChime();
-
     const uploadMeetingId = `mtg-upload-${Date.now()}`;
     const uploadMeeting = {
       id: uploadMeetingId,
@@ -480,8 +558,7 @@ export default function App() {
           "Synthesized executive hints and actionable deliverables."
         ],
         anchors: [
-          { concept: "Offline Audio Processing", hint: "Transcribes local .mp3/.wav/.m4a files with whisper-grade accuracy." },
-          { concept: "Contextual Extraction", hint: "Automatically tags critical blockers and decisions." }
+          { concept: "Offline Audio Processing", hint: "Transcribes local .mp3/.wav/.m4a files with whisper-grade accuracy." }
         ],
         actions: [
           { id: 'act-up-1', task: `Distribute summary of ${file.name}`, owner: activeUser.name, deadline: "This week", completed: false }
@@ -515,7 +592,7 @@ export default function App() {
       setSuggestedAnswer("The MeetMee bot runs on independent server infrastructure. If you disconnect, it stays connected and records uninterrupted in the cloud.");
       setCitation("Offline Resilience Protocol");
     } else if (qLower.includes('pricing') || qLower.includes('plan') || qLower.includes('subscription')) {
-      setSuggestedAnswer("Free tier offers 3 meetings. Monthly is ₹99 for 100 meetings + Comics. Yearly is ₹1099 for unlimited + Podcasts + Native Voice Assistant.");
+      setSuggestedAnswer("Free tier offers 3 meetings. Monthly is ₹99 for 100 meetings + Comics (up to 3/mo). Yearly is ₹1099 for unlimited meetings + UNLIMITED Comics + Podcasts + Native Voice Assistant.");
       setCitation("MeetMee Subscription Matrix");
     } else if (qLower.includes('latency') || qLower.includes('sla')) {
       setSuggestedAnswer("120ms p95 latency on streaming Deepgram audio chunks. Target was finalized during the architecture sync.");
@@ -686,6 +763,30 @@ export default function App() {
     setTimeout(() => setUpgradeNotification(null), 4000);
   };
 
+  // Comic Generation Handler (Enforcing: 3 times in ₹99/mo, UNLIMITED in ₹1099/yr)
+  const handleGenerateComic = () => {
+    if (activeUser.plan === 'free') {
+      alert("Comic generator is locked in Free Tier. Please upgrade to Monthly (₹99) or Yearly (₹1099)!");
+      setActiveTab('pricing');
+      return;
+    }
+
+    if (activeUser.plan === 'monthly' && (activeUser.comicGenerationsUsed || 0) >= 3) {
+      alert("Monthly limit reached: You have used all 3 comic generations for this month on the ₹99 plan. Please upgrade to the Yearly Plan (₹1099/yr) for UNLIMITED comic generations!");
+      setActiveTab('pricing');
+      return;
+    }
+
+    // Increment comic generation counter for active user
+    updateActiveUser(u => ({
+      ...u,
+      comicGenerationsUsed: (u.comicGenerationsUsed || 0) + 1
+    }));
+    playChime();
+    setUpgradeNotification("Generated new 4-panel visual comic strip!");
+    setTimeout(() => setUpgradeNotification(null), 3000);
+  };
+
   // Native Language Voice Assistant Handler
   const handleAssistantSubmit = (e) => {
     e.preventDefault();
@@ -734,14 +835,176 @@ export default function App() {
     return matchesSearch;
   });
 
-  // Current selected meeting or first available
   const currentMeeting = activeUser.meetings.find(m => m.id === selectedMeetingId) || activeUser.meetings[0] || null;
 
+  // =========================================================================
+  // VIEW 1: DEDICATED LOGIN PAGE (NAME, GMAIL, PASSWORD)
+  // =========================================================================
+  if (!isLoggedIn) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center items-center px-4 py-8 font-sans selection:bg-blue-600 selection:text-white">
+        
+        {/* Glow backdrop */}
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-600/15 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div className="w-full max-w-md space-y-6 relative z-10">
+          
+          {/* Logo & Brand */}
+          <div className="text-center space-y-2">
+            <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center shadow-xl shadow-blue-500/30 mx-auto">
+              <Radio className="h-6 w-6 text-white animate-pulse" />
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
+              Meet<span className="text-blue-500">Mee</span> AI
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-400">
+              Autonomous Meeting Intelligence &amp; Multi-Tenant Platform
+            </p>
+          </div>
+
+          {/* Login Card */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6 sm:p-7 shadow-2xl backdrop-blur-xl space-y-5">
+            
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <LogIn className="h-4 w-4 text-blue-400" />
+                <span>{isSignUpMode ? "Create New Account" : "Sign In to Workspace"}</span>
+              </h2>
+              <button 
+                type="button"
+                onClick={() => {
+                  setIsSignUpMode(!isSignUpMode);
+                  setLoginError(null);
+                }}
+                className="text-xs text-blue-400 hover:text-blue-300 font-semibold"
+              >
+                {isSignUpMode ? "Already registered? Sign In" : "Need account? Sign Up"}
+              </button>
+            </div>
+
+            {loginError && (
+              <div className="rounded-xl border border-rose-500/40 bg-rose-950/40 p-3 text-xs text-rose-300 flex items-center gap-2 animate-in fade-in">
+                <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0" />
+                <span>{loginError}</span>
+              </div>
+            )}
+
+            {/* Login Form: Name, Gmail, Password */}
+            <form onSubmit={handleAuthSubmit} className="space-y-4">
+              
+              {/* Full Name */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Full Name of User
+                </label>
+                <div className="relative">
+                  <User className="h-4 w-4 text-slate-500 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    required
+                    value={loginName}
+                    onChange={(e) => setLoginName(e.target.value)}
+                    placeholder="e.g. Priya Sharma or Alex Chen"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 pl-9 pr-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              {/* Gmail / Work Email */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Gmail / Work Email
+                </label>
+                <div className="relative">
+                  <Mail className="h-4 w-4 text-slate-500 absolute left-3 top-3" />
+                  <input
+                    type="email"
+                    required
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    placeholder="e.g. priya.sharma@gmail.com"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 pl-9 pr-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              {/* Password */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Password
+                </label>
+                <div className="relative">
+                  <Key className="h-4 w-4 text-slate-500 absolute left-3 top-3" />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    placeholder="Enter password (min 5 characters)"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 pl-9 pr-10 py-2.5 text-xs text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-3 text-slate-500 hover:text-slate-300"
+                    title={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Submit Button */}
+              <button
+                type="submit"
+                className="w-full rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-3 text-xs font-bold text-white shadow-lg shadow-blue-500/25 transition-all hover:scale-101 active:scale-98 flex items-center justify-center gap-2 mt-2"
+              >
+                <span>{isSignUpMode ? "Create Account & Go to Homepage" : "Log In & Go to Homepage"}</span>
+                <ArrowRight className="h-4 w-4" />
+              </button>
+
+            </form>
+
+            {/* Quick 1-Click Demo Logins */}
+            <div className="pt-2 border-t border-slate-800 text-center space-y-2">
+              <span className="text-[11px] text-slate-400 block font-medium">Or 1-click login with demo credentials:</span>
+              <div className="flex justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleQuickDemoLogin("Priya Sharma", "priya.sharma@gmail.com")}
+                  className="rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 px-2.5 py-1 text-[11px] text-slate-300 transition-all"
+                >
+                  👤 Priya (Product)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleQuickDemoLogin("Alex Chen", "alex.chen@gmail.com")}
+                  className="rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 px-2.5 py-1 text-[11px] text-slate-300 transition-all"
+                >
+                  👤 Alex (Engineer)
+                </button>
+              </div>
+            </div>
+
+          </div>
+
+          <p className="text-center text-[11px] text-slate-500">
+            MeetMee Enterprise AI &bull; Encrypted Sessions &bull; Multi-Tenant Isolation
+          </p>
+
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // VIEW 2: HOMEPAGE (MEETMEE DASHBOARD & INTELLIGENCE CENTER)
+  // =========================================================================
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-blue-600 selection:text-white overflow-x-hidden">
       
       {/* ========================================================================= */}
-      {/* TOP HEADER: RESPONSIVE ACROSS MOBILE, TABLET & DESKTOP */}
+      {/* TOP HEADER: RESPONSIVE ACROSS ALL DEVICES (NO ALWAYS-ONLINE BADGE) */}
       {/* ========================================================================= */}
       <header className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950/95 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2">
@@ -769,7 +1032,7 @@ export default function App() {
             </div>
           )}
 
-          {/* User Profile & Subscription Tier Controls */}
+          {/* User Profile, Plan & Logout Controls */}
           <div className="flex items-center gap-2 sm:gap-3">
             
             {/* Active Subscription Badge */}
@@ -789,18 +1052,6 @@ export default function App() {
               )}
             </button>
 
-            {/* Always-Online Presence Indicator (Icon only on small screens, full on tablet+) */}
-            <div 
-              className="flex items-center gap-1.5 rounded-lg sm:rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-2 sm:px-3 py-1.5 text-xs text-emerald-400 shrink-0"
-              title="Cloud Presence Daemon keeps your ID marked Online in calls even if device disconnects"
-            >
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              <span className="hidden md:inline font-medium">Always Online</span>
-            </div>
-
             {/* User Switcher Dropdown Button */}
             <button
               onClick={() => setIsUserModalOpen(true)}
@@ -816,6 +1067,16 @@ export default function App() {
                   <ChevronDown className="h-3 w-3 text-slate-400" />
                 </div>
               </div>
+            </button>
+
+            {/* Logout Button */}
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1 rounded-lg sm:rounded-xl border border-slate-800 bg-slate-900/90 hover:bg-rose-950/40 hover:border-rose-500/40 px-2 sm:px-2.5 py-1.5 text-xs text-slate-400 hover:text-rose-300 transition-all shrink-0"
+              title="Log out back to login screen"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Log Out</span>
             </button>
 
           </div>
@@ -835,7 +1096,7 @@ export default function App() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8">
         
         {/* ========================================================================= */}
-        {/* HERO & MEETING DISPATCH SECTION (100% FLUID ACROSS ALL DEVICES) */}
+        {/* HERO & MEETING DISPATCH SECTION */}
         {/* ========================================================================= */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-start">
           
@@ -847,7 +1108,7 @@ export default function App() {
                 Autonomous Meeting Intelligence
               </div>
               <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-white leading-tight">
-                Meeting Assistant for {activeUser.name}
+                Welcome, {activeUser.name}
               </h1>
               <p className="mt-1.5 sm:mt-2 text-xs sm:text-sm text-slate-300">
                 Paste your meeting link, start live audio capture, or upload a call recording. MeetMee attends even if you go offline and triggers instant grounded answers <strong>strictly when your mentor or host asks a question</strong>.
@@ -938,7 +1199,7 @@ export default function App() {
                   {isLiveListening ? 'Stop Mic Capture' : '🎙️ Live Tab/Mic Capture'}
                 </button>
 
-                {/* Local Audio File Upload (Useful for offline recordings or in-person meetings) */}
+                {/* Local Audio File Upload */}
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
@@ -971,7 +1232,7 @@ export default function App() {
                 </div>
               )}
 
-              {/* In-House Native Bot Fleet Telemetry */}
+              {/* In-House Native Bot Fleet Telemetry (NO Always-Online text) */}
               {isBotJoined && (
                 <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-3 sm:p-3.5 text-xs text-emerald-200 space-y-2">
                   <div className="flex items-center justify-between">
@@ -993,7 +1254,7 @@ export default function App() {
                       <span className="text-slate-300">Headless Chromium</span>
                     </div>
                     <div>
-                      <span className="text-slate-500 block text-[9px] uppercase">PID</span>
+                      <span className="text-slate-500 block text-[9px] uppercase">Process PID</span>
                       <span className="text-emerald-400 font-bold">{nativeBotTelemetry?.pid || '18492'}</span>
                     </div>
                     <div>
@@ -1001,14 +1262,14 @@ export default function App() {
                       <span className="text-blue-400">16kHz WebRTC</span>
                     </div>
                     <div>
-                      <span className="text-slate-500 block text-[9px] uppercase">Online Daemon</span>
-                      <span className="text-emerald-400 font-bold">24/7 Active</span>
+                      <span className="text-slate-500 block text-[9px] uppercase">Status</span>
+                      <span className="text-emerald-400 font-bold">Recording</span>
                     </div>
                   </div>
 
                   <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
                     <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-                    <span>Transcribing live. You can close this tab—the bot records in cloud for {activeUser.name}.</span>
+                    <span>Transcribing live in cloud for {activeUser.name}. Recording continues even if your browser tab closes.</span>
                   </div>
                 </div>
               )}
@@ -1031,11 +1292,6 @@ export default function App() {
                   </div>
                 </div>
               )}
-
-              <div className="flex items-center gap-2 text-[11px] text-slate-500 pt-0.5">
-                <ShieldCheck className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-                <span>Cloud Presence Active: Your ID stays marked &quot;Online&quot; in the meeting even if your local laptop sleeps.</span>
-              </div>
             </form>
           </div>
 
@@ -1243,7 +1499,7 @@ export default function App() {
                 Hint Notes &amp; Email
               </button>
               
-              {/* Comic Tab */}
+              {/* Comic Tab (3/month on ₹99, Unlimited on ₹1099) */}
               <button
                 onClick={() => setActiveTab('comic')}
                 className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all shrink-0 whitespace-nowrap ${
@@ -1251,7 +1507,7 @@ export default function App() {
                 }`}
               >
                 <Palette className="h-3.5 w-3.5 shrink-0" />
-                Comic Strip {activeUser.plan === 'free' && <Lock className="h-3 w-3 text-amber-400" />}
+                Comic Strip {activeUser.plan === 'free' ? <Lock className="h-3 w-3 text-amber-400" /> : activeUser.plan === 'monthly' ? `(${activeUser.comicGenerationsUsed || 0}/3)` : '(Unlimited)'}
               </button>
 
               {/* Podcast Tab */}
@@ -1290,7 +1546,7 @@ export default function App() {
           </div>
 
           {/* ========================================================================= */}
-          {/* TAB: PRICING & SUBSCRIPTION TIERS (Free, ₹99/mo, ₹1099/yr) */}
+          {/* TAB: PRICING & SUBSCRIPTION TIERS (UPDATED COMIC LIMITS) */}
           {/* ========================================================================= */}
           {activeTab === 'pricing' && (
             <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 sm:p-6 backdrop-blur-sm space-y-6">
@@ -1298,7 +1554,7 @@ export default function App() {
                 <span className="text-xs font-bold uppercase tracking-wider text-amber-400">Subscription Plans</span>
                 <h3 className="text-xl sm:text-2xl font-extrabold text-white">Choose Your MeetMee Tier</h3>
                 <p className="text-xs text-slate-400">
-                  Select a plan tailored for {activeUser.name}&apos;s meeting volume and content transformation requirements.
+                  Select a plan tailored for {activeUser.name}&apos;s meeting volume and visual comic generation needs.
                 </p>
               </div>
 
@@ -1369,7 +1625,7 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* TIER 2: Monthly Plan (₹99/month) */}
+                {/* TIER 2: Monthly Plan (₹99/month - COMIC AVAILABLE ONLY 3 TIMES) */}
                 <div className={`rounded-2xl border p-4 sm:p-5 flex flex-col justify-between transition-all ${
                   activeUser.plan === 'monthly' 
                     ? 'border-indigo-500 bg-indigo-950/20 ring-2 ring-indigo-500/40' 
@@ -1390,7 +1646,7 @@ export default function App() {
                       <span className="text-xs text-slate-400">/ month</span>
                     </div>
                     <p className="mt-2 text-xs text-slate-400">
-                      Unlocks up to 100 meetings and full 4-panel visual comic storytelling.
+                      Up to 100 meetings + 4-Panel Comic Generator (up to 3 times/month).
                     </p>
 
                     <div className="mt-5 space-y-2 text-xs text-slate-300 border-t border-slate-800 pt-4">
@@ -1400,7 +1656,7 @@ export default function App() {
                       </div>
                       <div className="flex items-center gap-2">
                         <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-                        <span className="text-emerald-300 font-semibold">4-Panel Comic Strip Generator UNLOCKED</span>
+                        <span className="text-pink-300 font-semibold">4-Panel Comic Strip (3 generations / month)</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
@@ -1433,7 +1689,7 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* TIER 3: Yearly Plan (₹1099/year) */}
+                {/* TIER 3: Yearly Plan (₹1099/year - UNLIMITED COMIC GENERATION) */}
                 <div className={`rounded-2xl border p-4 sm:p-5 flex flex-col justify-between relative overflow-hidden transition-all ${
                   activeUser.plan === 'yearly' 
                     ? 'border-amber-500 bg-amber-950/20 ring-2 ring-amber-500/50' 
@@ -1460,7 +1716,7 @@ export default function App() {
                       <span className="text-xs text-slate-400">/ year</span>
                     </div>
                     <p className="mt-2 text-xs text-slate-400">
-                      Unlimited meetings, all features, plus the Native Language Voice Assistant.
+                      Unlimited meetings, UNLIMITED Comic Generations, plus Voice Assistant &amp; Podcasts.
                     </p>
 
                     <div className="mt-5 space-y-2 text-xs text-slate-300 border-t border-slate-800 pt-4">
@@ -1470,19 +1726,15 @@ export default function App() {
                       </div>
                       <div className="flex items-center gap-2">
                         <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-                        <span className="text-amber-300 font-bold">NEW: Native Language Voice Assistant</span>
+                        <span className="text-pink-300 font-bold">4-Panel Comic Strip (UNLIMITED Generations)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                        <span className="text-amber-300 font-bold">Native Language Voice Assistant for General Use</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
                         <span className="text-indigo-300 font-semibold">NotebookLM Multilingual Podcast Engine</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-                        <span className="text-pink-300 font-semibold">4-Panel Comic Strip Generator UNLOCKED</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-                        <span>Always-Online Virtual Cloud Presence</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
@@ -1535,7 +1787,7 @@ export default function App() {
                 )}
               </div>
 
-              {/* Search & Filter Controls (New Useful Feature) */}
+              {/* Search & Filter Controls */}
               {activeUser.meetings.length > 0 && (
                 <div className="flex flex-col sm:flex-row gap-2">
                   <div className="relative flex-1">
@@ -1828,7 +2080,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Interactive Action Items Checklist (New Useful Feature) */}
+                  {/* Interactive Action Items Checklist */}
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
@@ -1899,7 +2151,7 @@ export default function App() {
           )}
 
           {/* ========================================================================= */}
-          {/* TAB: COMIC STRIP (Gated: Locked for Free Tier, Unlocked for Monthly & Yearly) */}
+          {/* TAB: COMIC STRIP (3/MONTH ON ₹99, UNLIMITED ON ₹1099) */}
           {/* ========================================================================= */}
           {activeTab === 'comic' && (
             activeUser.plan === 'free' ? (
@@ -1909,49 +2161,89 @@ export default function App() {
                 </div>
                 <h3 className="text-xl font-bold text-white">4-Panel Visual Comic Generator is Locked</h3>
                 <p className="text-xs text-slate-300 max-w-md mx-auto leading-relaxed">
-                  Free Tier accounts do not have access to visual comic storytelling. Upgrade {activeUser.name}&apos;s account to the <strong>Monthly Plan (₹99/month)</strong> or <strong>Yearly Plan (₹1099/year)</strong> to turn complex meeting discussions into engaging narrative comics.
+                  Free Tier accounts do not have access to visual comic storytelling. Upgrade {activeUser.name}&apos;s account to the <strong>Monthly Plan (₹99/month for 3 comics)</strong> or <strong>Yearly Plan (₹1099/year for UNLIMITED comics)</strong>.
                 </p>
                 <div className="pt-2 flex flex-wrap justify-center gap-3">
                   <button
                     onClick={() => handleSelectPlan('monthly')}
                     className="rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-bold px-5 py-2.5 shadow-lg shadow-pink-600/30 transition-all"
                   >
-                    Unlock with Monthly Plan (₹99/mo)
+                    Unlock with Monthly (3 comics / ₹99)
                   </button>
                   <button
-                    onClick={() => setActiveTab('pricing')}
-                    className="rounded-xl border border-slate-700 bg-slate-800 text-slate-200 text-xs font-semibold px-4 py-2.5 hover:bg-slate-700"
+                    onClick={() => handleSelectPlan('yearly')}
+                    className="rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 text-xs font-bold px-5 py-2.5 shadow-lg shadow-amber-500/25 transition-all"
                   >
-                    View All Plans
+                    Unlock UNLIMITED (₹1099/yr)
                   </button>
                 </div>
               </div>
             ) : (
               <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 sm:p-6 backdrop-blur-sm space-y-6">
+                
+                {/* Comic Header with Exact Plan Quota Tracker */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
                   <div>
-                    <h3 className="text-base font-bold text-white flex items-center gap-2">
-                      <Palette className="h-5 w-5 text-pink-400" />
-                      4-Panel Visual Comic Strip Generator
-                      <span className="text-[10px] bg-pink-500/20 text-pink-300 px-2 py-0.5 rounded-full border border-pink-500/30">
-                        {activeUser.plan === 'monthly' ? 'Monthly Plan' : 'Yearly VIP'}
-                      </span>
-                    </h3>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-base font-bold text-white flex items-center gap-2">
+                        <Palette className="h-5 w-5 text-pink-400" />
+                        4-Panel Visual Comic Strip Generator
+                      </h3>
+                      {activeUser.plan === 'monthly' ? (
+                        <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-500/30 font-semibold">
+                          Monthly Plan: {activeUser.comicGenerationsUsed || 0} / 3 Used This Month
+                        </span>
+                      ) : (
+                        <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full border border-amber-500/30 font-semibold">
+                          Yearly VIP: Unlimited Comic Generations
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      Transforms technical discussions into an engaging 4-panel narrative storyboard with character dialogues.
+                      Transforms complex technical meetings into an engaging narrative storyboard with character dialogues.
                     </p>
                   </div>
 
-                  {currentMeeting && (
+                  <div className="flex items-center gap-2">
                     <button
-                      onClick={() => alert(`Exporting Comic Strip for '${currentMeeting.title}' as high-res PNG...`)}
-                      className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-all shrink-0"
+                      onClick={handleGenerateComic}
+                      className="flex items-center justify-center gap-1.5 rounded-xl bg-pink-600 hover:bg-pink-500 text-white px-3.5 py-1.5 text-xs font-bold transition-all shadow-sm shrink-0"
                     >
-                      <Download className="h-3.5 w-3.5" />
-                      Export Comic (PNG)
+                      <Sparkles className="h-3.5 w-3.5" />
+                      <span>Generate New Comic</span>
                     </button>
-                  )}
+                    {currentMeeting && (
+                      <button
+                        onClick={() => alert(`Exporting Comic Strip for '${currentMeeting.title}' as high-res PNG...`)}
+                        className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-all shrink-0"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        PNG
+                      </button>
+                    )}
+                  </div>
                 </div>
+
+                {/* Monthly Limit Exhausted Warning (if >= 3 on Monthly plan) */}
+                {activeUser.plan === 'monthly' && (activeUser.comicGenerationsUsed || 0) >= 3 && (
+                  <div className="rounded-xl border border-amber-500/40 bg-amber-950/30 p-4 text-xs text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
+                    <div className="flex items-center gap-2.5">
+                      <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0" />
+                      <div>
+                        <strong>Monthly Comic Limit Reached (3 of 3 used):</strong>
+                        <p className="text-slate-300 text-[11px] mt-0.5">
+                          You have used all 3 comic generation credits included in the ₹99/month subscription.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleSelectPlan('yearly')}
+                      className="rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold px-4 py-2 shrink-0 shadow-md shadow-amber-500/20"
+                    >
+                      Upgrade to Yearly for Unlimited Comics →
+                    </button>
+                  </div>
+                )}
 
                 {!currentMeeting ? (
                   <div className="rounded-xl border border-slate-800/80 bg-slate-950/40 p-8 sm:p-12 text-center space-y-3">
@@ -2002,7 +2294,7 @@ export default function App() {
                         </div>
                         <div className="mt-3 rounded-lg bg-slate-950 border border-slate-800 p-2.5 text-xs text-white">
                           <strong className="text-[10px] text-slate-400 block mb-0.5">MeetMee Bot:</strong>
-                          &ldquo;Audio captured at 16kHz. Online status preserved.&rdquo;
+                          &ldquo;Audio captured at 16kHz. Real-time RAG active.&rdquo;
                         </div>
                       </div>
                     </div>
@@ -2159,7 +2451,7 @@ export default function App() {
           )}
 
           {/* ========================================================================= */}
-          {/* TAB: NATIVE VOICE ASSISTANT (NEW FEATURE: YEARLY PLAN EXCLUSIVE) */}
+          {/* TAB: NATIVE VOICE ASSISTANT (YEARLY PLAN EXCLUSIVE) */}
           {/* ========================================================================= */}
           {activeTab === 'assistant' && (
             activeUser.plan !== 'yearly' ? (
@@ -2296,7 +2588,7 @@ export default function App() {
             {!isAddUserMode ? (
               <div className="space-y-4">
                 <p className="text-xs text-slate-400">
-                  Select a user account or create a new profile. Each account maintains its own isolated meeting history, retention lifecycle, notes, and subscription limits.
+                  Select an account or register a new profile. Each account maintains its own isolated meeting history, retention lifecycle, notes, and subscription limits.
                 </p>
 
                 {/* User List */}
@@ -2361,7 +2653,7 @@ export default function App() {
                 </p>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">Full Name</label>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">Full Name of User</label>
                   <input
                     type="text"
                     required
@@ -2373,13 +2665,13 @@ export default function App() {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">Email Address</label>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">Gmail / Email Address</label>
                   <input
                     type="email"
                     required
                     value={newUserEmail}
                     onChange={(e) => setNewUserEmail(e.target.value)}
-                    placeholder="e.g. priya.sharma@company.com"
+                    placeholder="e.g. priya.sharma@gmail.com"
                     className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
                   />
                 </div>
@@ -2425,9 +2717,9 @@ export default function App() {
           <div className="flex items-center gap-3 text-slate-400 text-[11px]">
             <span>Free Tier (3 calls)</span>
             <span>&bull;</span>
-            <span>Monthly ₹99</span>
+            <span>Monthly ₹99 (3 Comics)</span>
             <span>&bull;</span>
-            <span>Yearly ₹1,099</span>
+            <span>Yearly ₹1,099 (Unlimited Comics)</span>
           </div>
         </div>
       </footer>
