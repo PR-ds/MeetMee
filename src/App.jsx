@@ -53,6 +53,7 @@ import {
   Share2,
   UploadCloud,
   Timer,
+  PhoneOff,
   Eye,
   EyeOff,
   Key,
@@ -762,6 +763,57 @@ export default function App() {
     });
   };
 
+  // Exit / End Active Meeting Handler
+  const handleExitMeeting = () => {
+    const finalSeconds = meetingTimerSeconds;
+    const mins = Math.floor(finalSeconds / 60);
+    const secs = finalSeconds % 60;
+    const durationFormatted = mins > 0 ? `${mins}m ${secs}s` : `${Math.max(1, secs)}s`;
+
+    // 1. Disconnect In-House Bot & clear telemetry
+    setIsBotJoined(false);
+    setNativeBotTelemetry(null);
+
+    // 2. Stop Browser-native live listening if running
+    if (isLiveListening && speechRecognitionInstance) {
+      try {
+        speechRecognitionInstance.stop();
+      } catch (e) {}
+      setIsLiveListening(false);
+    }
+
+    // 3. Close mentor pop-up if visible
+    setIsPopupVisible(false);
+
+    // 4. Update the active meeting record's duration and finalize summary notes
+    if (selectedMeetingId) {
+      updateActiveUser(u => ({
+        ...u,
+        meetings: u.meetings.map(m => {
+          if (m.id === selectedMeetingId) {
+            return {
+              ...m,
+              duration: durationFormatted,
+              summary: {
+                ...m.summary,
+                tldr: [
+                  `Meeting concluded after ${durationFormatted}. Audio session gracefully closed.`,
+                  ...(m.summary?.tldr || []).slice(1)
+                ]
+              }
+            };
+          }
+          return m;
+        })
+      }));
+    }
+
+    playChime();
+    setUpgradeNotification(`📞 Exited meeting (${durationFormatted}). In-house bot disconnected and notes finalized.`);
+    setTimeout(() => setUpgradeNotification(null), 5000);
+    setActiveTab('notes');
+  };
+
   // Direct Browser Native Tab / Mic Audio Capture
   const handleToggleLiveTabCapture = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1375,11 +1427,22 @@ export default function App() {
             </div>
           </div>
 
-          {/* Active Call Live Stopwatch (if running) */}
+          {/* Active Call Live Stopwatch & Exit Meeting Button */}
           {(isBotJoined || isLiveListening) && (
-            <div className="flex items-center gap-1.5 rounded-full border border-red-500/40 bg-red-950/40 px-2.5 py-1 text-[11px] font-mono text-red-300 animate-pulse">
-              <Timer className="h-3 w-3 text-red-400" />
-              <span>REC {formatTimer(meetingTimerSeconds)}</span>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 rounded-full border border-red-500/40 bg-red-950/40 px-2.5 py-1 text-[11px] font-mono text-red-300 animate-pulse">
+                <Timer className="h-3 w-3 text-red-400" />
+                <span>REC {formatTimer(meetingTimerSeconds)}</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleExitMeeting}
+                className="flex items-center gap-1.5 rounded-lg sm:rounded-xl bg-rose-600 hover:bg-rose-500 text-white px-2.5 sm:px-3 py-1 text-xs font-bold shadow-md shadow-rose-600/30 transition-all cursor-pointer"
+                title="Exit the active meeting and disconnect bot"
+              >
+                <PhoneOff className="h-3.5 w-3.5" />
+                <span>Exit Meeting</span>
+              </button>
             </div>
           )}
 
@@ -1677,18 +1740,29 @@ export default function App() {
 
               {/* In-House Native Bot Fleet Telemetry (NO Always-Online text) */}
               {isBotJoined && (
-                <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-3 sm:p-3.5 text-xs text-emerald-200 space-y-2">
-                  <div className="flex items-center justify-between">
+                <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-3 sm:p-3.5 text-xs text-emerald-200 space-y-2.5 animate-in fade-in">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-2">
                       <span className="relative flex h-2.5 w-2.5">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                         <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
                       </span>
                       <span className="font-bold text-white text-xs sm:text-sm">MeetMee In-House Headless Bot Active</span>
+                      <span className="rounded bg-emerald-900/60 px-2 py-0.5 text-[9px] sm:text-[10px] font-mono border border-emerald-500/30 text-emerald-300">
+                        Zero Recall.ai
+                      </span>
                     </div>
-                    <span className="rounded bg-emerald-900/60 px-2 py-0.5 text-[9px] sm:text-[10px] font-mono border border-emerald-500/30 text-emerald-300">
-                      Zero Recall.ai
-                    </span>
+
+                    {/* Exit Meeting Action Button */}
+                    <button
+                      type="button"
+                      onClick={handleExitMeeting}
+                      className="flex items-center gap-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold px-3 py-1.5 shadow-md shadow-rose-600/30 transition-all cursor-pointer shrink-0"
+                      title="Exit current meeting and disconnect in-house bot"
+                    >
+                      <PhoneOff className="h-3.5 w-3.5" />
+                      <span>Exit Meeting</span>
+                    </button>
                   </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] sm:text-[11px] font-mono bg-slate-950/60 rounded-lg p-2.5 border border-emerald-500/20">
@@ -1719,16 +1793,26 @@ export default function App() {
 
               {/* Live Audio / Web Speech Status */}
               {isLiveListening && (
-                <div className="rounded-xl border border-blue-500/30 bg-blue-950/30 p-3 text-xs text-blue-200 space-y-1.5">
-                  <div className="flex items-center justify-between">
+                <div className="rounded-xl border border-blue-500/30 bg-blue-950/30 p-3 text-xs text-blue-200 space-y-2 animate-in fade-in">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-2">
                       <span className="relative flex h-2 w-2">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
                         <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
                       </span>
                       <span className="font-semibold text-white">Live Audio Stream Connected</span>
+                      <span className="text-[10px] text-blue-300 font-mono bg-blue-900/50 px-2 py-0.5 rounded border border-blue-500/20">Auto-Detector Active</span>
                     </div>
-                    <span className="text-[10px] text-blue-300 font-mono">Auto-Detector Active</span>
+
+                    <button
+                      type="button"
+                      onClick={handleExitMeeting}
+                      className="flex items-center gap-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-bold px-2.5 py-1 shadow transition-all cursor-pointer shrink-0"
+                      title="Exit meeting and stop live audio streaming"
+                    >
+                      <PhoneOff className="h-3 w-3" />
+                      <span>Exit Meeting</span>
+                    </button>
                   </div>
                   <div className="rounded bg-slate-950/80 px-2.5 py-1.5 text-[11px] font-mono text-slate-300 border border-blue-500/20 truncate">
                     {liveTranscribedText ? `“${liveTranscribedText}”` : `Speak or say: '${activeUser.name.split(' ')[0]}, what is our latency SLA?' to test auto-popup...`}
@@ -2563,14 +2647,35 @@ export default function App() {
               ) : (
                 <div className="space-y-6">
                   {/* Meeting Subject Banner */}
-                  <div className="rounded-xl bg-slate-950/80 border border-slate-800 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="rounded-xl bg-slate-950/80 border border-slate-800 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Active Meeting Summary</span>
-                      <h4 className="text-sm font-bold text-white">{currentMeeting.title}</h4>
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                        {(isBotJoined || isLiveListening) && currentMeeting.id === selectedMeetingId ? "Live In-Call Session" : "Active Meeting Summary"}
+                      </span>
+                      <h4 className="text-sm font-bold text-white flex items-center gap-2 flex-wrap">
+                        <span>{currentMeeting.title}</span>
+                        {(isBotJoined || isLiveListening) && currentMeeting.id === selectedMeetingId && (
+                          <span className="bg-red-500/20 text-red-300 border border-red-500/40 text-[9px] font-mono px-2 py-0.5 rounded-full animate-pulse flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-400"></span>
+                            IN CALL ({formatTimer(meetingTimerSeconds)})
+                          </span>
+                        )}
+                      </h4>
                     </div>
-                    <div className="text-xs text-slate-400 font-mono flex items-center gap-2">
+                    <div className="text-xs text-slate-400 font-mono flex items-center gap-2 flex-wrap">
                       <span className="bg-slate-800 px-2 py-0.5 rounded text-[10px] text-slate-300">{currentMeeting.platform}</span>
                       <span>{currentMeeting.date}</span>
+                      {(isBotJoined || isLiveListening) && currentMeeting.id === selectedMeetingId && (
+                        <button
+                          type="button"
+                          onClick={handleExitMeeting}
+                          className="flex items-center gap-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold px-3 py-1.5 shadow-md shadow-rose-600/30 transition-all cursor-pointer"
+                          title="Exit this meeting and finalize notes"
+                        >
+                          <PhoneOff className="h-3.5 w-3.5" />
+                          <span>Exit Meeting</span>
+                        </button>
+                      )}
                     </div>
                   </div>
 
