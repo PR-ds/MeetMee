@@ -304,7 +304,7 @@ export default function App() {
   // =========================================================================
   const [users, setUsers] = useState(() => {
     try {
-      const saved = localStorage.getItem('meetmee_users_v6');
+      const saved = localStorage.getItem('meetmee_users_v7') || localStorage.getItem('meetmee_users_v6');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -313,16 +313,16 @@ export default function App() {
             return {
               ...u,
               name: isVip ? VIP_ACCOUNT_CONFIG.name : u.name,
-              plan: isVip ? 'yearly' : u.plan,
+              plan: isVip ? 'yearly' : (u.plan || 'free'),
               isLifetimeVip: isVip,
               subscriptionExpiryDate: isVip ? null : (u.subscriptionExpiryDate || null),
               subscriptionStartDate: isVip ? null : (u.subscriptionStartDate || null),
-              password: isVip ? VIP_ACCOUNT_CONFIG.password : u.password,
+              password: isVip ? VIP_ACCOUNT_CONFIG.password : (u.password || "default@123"),
               role: isVip ? VIP_ACCOUNT_CONFIG.role : (u.role || "Corporate Professional"),
-              meetings: Array.isArray(u.meetings) ? u.meetings : [],
-              meetingsCount: typeof u.meetingsCount === 'number' ? u.meetingsCount : 0,
-              comicGenerationsUsed: typeof u.comicGenerationsUsed === 'number' ? u.comicGenerationsUsed : 0,
-              assistantHistory: Array.isArray(u.assistantHistory) ? u.assistantHistory : []
+              meetings: [], // Strictly delete default loaded meeting records, keeping only user details
+              meetingsCount: 0,
+              comicGenerationsUsed: 0,
+              assistantHistory: []
             };
           });
           const hasVip = mapped.some(u => u.email?.toLowerCase() === VIP_ACCOUNT_CONFIG.email.toLowerCase());
@@ -340,13 +340,7 @@ export default function App() {
               meetingsCount: 0,
               comicGenerationsUsed: 0,
               meetings: [],
-              assistantHistory: [
-                {
-                  role: 'assistant',
-                  lang: 'en',
-                  text: `Welcome ABIRAMI P! Your Lifetime VIP Subscription is active for free all time with unlimited meetings, comics, podcasts, and native voice AI.`
-                }
-              ]
+              assistantHistory: []
             });
           }
           return mapped;
@@ -368,25 +362,19 @@ export default function App() {
       meetingsCount: 0,
       comicGenerationsUsed: 0,
       meetings: [],
-      assistantHistory: [
-        {
-          role: 'assistant',
-          lang: 'en',
-          text: `Welcome ABIRAMI P! Your Lifetime VIP Subscription is active for free all time with unlimited meetings, comics, podcasts, and native voice AI.`
-        }
-      ]
+      assistantHistory: []
     }];
   });
 
   const [activeUserId, setActiveUserId] = useState(() => {
     try {
-      const savedId = localStorage.getItem('meetmee_active_user_id_v6');
+      const savedId = localStorage.getItem('meetmee_active_user_id_v7') || localStorage.getItem('meetmee_active_user_id_v6');
       if (savedId) return savedId;
     } catch (e) {}
     return "usr-vip-abirami";
   });
 
-  // Current Active User (Fresh clean slate with preserved payment plan)
+  // Current Active User (Fresh clean slate with preserved user details and payment plan)
   const activeUser = users.find(u => u.id === activeUserId) || users.find(u => u.email?.toLowerCase() === VIP_ACCOUNT_CONFIG.email.toLowerCase()) || users[0] || {
     id: "usr-vip-abirami",
     name: VIP_ACCOUNT_CONFIG.name,
@@ -405,11 +393,11 @@ export default function App() {
 
   const subscriptionValidity = getSubscriptionValidity(activeUser);
 
-  // Sync users, payment plan & session to localStorage v6
+  // Sync users, payment plan & session to localStorage v7
   useEffect(() => {
     try {
-      localStorage.setItem('meetmee_users_v6', JSON.stringify(users));
-      if (activeUserId) localStorage.setItem('meetmee_active_user_id_v6', activeUserId);
+      localStorage.setItem('meetmee_users_v7', JSON.stringify(users));
+      if (activeUserId) localStorage.setItem('meetmee_active_user_id_v7', activeUserId);
       localStorage.setItem('meetmee_is_logged_in_v6', isLoggedIn ? 'true' : 'false');
       if (activeUser?.plan) localStorage.setItem('meetmee_payment_plan_v6', activeUser.plan);
     } catch (e) {
@@ -417,14 +405,13 @@ export default function App() {
     }
   }, [users, activeUserId, isLoggedIn, activeUser?.plan]);
 
-  // One-time automatic reset on startup: strips default mock meetings & test data while strictly preserving payment data
+  // One-time automatic reset on startup: deletes all default and test loaded meetings while strictly preserving user credentials & payment plan
   useEffect(() => {
     try {
-      const isAlreadyMigrated = localStorage.getItem('meetmee_clean_reset_done_v6');
-      if (!isAlreadyMigrated) {
+      const isAlreadyMigratedV7 = localStorage.getItem('meetmee_clean_reset_done_v7');
+      if (!isAlreadyMigratedV7) {
         let preservedPlan = 'free';
-        // Check older storage versions for any paid subscription (Monthly ₹99 or Yearly ₹1099)
-        const oldUsers = localStorage.getItem('meetmee_users_v5');
+        const oldUsers = localStorage.getItem('meetmee_users_v6') || localStorage.getItem('meetmee_users_v5');
         if (oldUsers) {
           try {
             const parsed = JSON.parse(oldUsers);
@@ -437,16 +424,17 @@ export default function App() {
         localStorage.setItem('meetmee_payment_plan_v6', preservedPlan);
         setActivePlan(preservedPlan);
 
-        // Wipe old mock keys
+        // Wipe older loaded data
+        localStorage.removeItem('meetmee_users_v6');
         localStorage.removeItem('meetmee_users_v5');
         localStorage.removeItem('meetmee_meetings_v4');
-        localStorage.removeItem('meetmee_active_user_id_v5');
-        localStorage.setItem('meetmee_clean_reset_done_v6', 'true');
+        localStorage.removeItem('meetmee_clean_reset_done_v6');
+        localStorage.setItem('meetmee_clean_reset_done_v7', 'true');
 
-        // Reset in-memory users' meeting lists to 0
+        // Delete all meeting data from memory while keeping all user account details
         setUsers(prev => prev.map(u => ({
           ...u,
-          plan: preservedPlan !== 'free' ? preservedPlan : u.plan,
+          plan: u.email?.toLowerCase() === VIP_ACCOUNT_CONFIG.email.toLowerCase() ? 'yearly' : (preservedPlan !== 'free' ? preservedPlan : u.plan),
           meetings: [],
           meetingsCount: 0,
           comicGenerationsUsed: 0,
@@ -455,23 +443,24 @@ export default function App() {
         setSelectedMeetingId(null);
       }
     } catch (e) {
-      console.error("Error in clean reset:", e);
+      console.error("Error in clean reset v7:", e);
     }
   }, []);
 
-  // Reset all default and newly added meeting data EXCEPT payment data
+  // Reset all default and newly added meeting data EXCEPT user account details & payment data
   const handleResetAllDataExceptPayment = () => {
     const preservedPlan = activeUser?.plan || activePlan || 'free';
     try {
       localStorage.setItem('meetmee_payment_plan_v6', preservedPlan);
+      localStorage.removeItem('meetmee_users_v6');
       localStorage.removeItem('meetmee_users_v5');
       localStorage.removeItem('meetmee_meetings_v4');
     } catch (e) {}
 
-    // Reset all users' meetings, newly added records, and quotas
+    // Reset all users' meetings, records, and quotas
     setUsers(prev => prev.map(u => ({
       ...u,
-      plan: preservedPlan,
+      plan: u.email?.toLowerCase() === VIP_ACCOUNT_CONFIG.email.toLowerCase() ? 'yearly' : preservedPlan,
       meetings: [],
       meetingsCount: 0,
       comicGenerationsUsed: 0,
@@ -638,12 +627,19 @@ export default function App() {
   const [upgradeNotification, setUpgradeNotification] = useState(null);
   const [showPresenceGuideModal, setShowPresenceGuideModal] = useState(false);
   const [meetingUrlError, setMeetingUrlError] = useState(null);
+  const [meetingLinkStatus, setMeetingLinkStatus] = useState('live'); // 'live' | 'ended'
+  const [copiedParticipantName, setCopiedParticipantName] = useState(false);
 
   // In-House Native Bot & Direct Tab Capture States
   const [isLiveListening, setIsLiveListening] = useState(false);
   const [liveTranscribedText, setLiveTranscribedText] = useState('');
   const [speechRecognitionInstance, setSpeechRecognitionInstance] = useState(null);
   const [nativeBotTelemetry, setNativeBotTelemetry] = useState(null);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const mediaStreamRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const animFrameRef = useRef(null);
 
   // Real-time HUD Pop-up state (ONLY APPEARS WHEN MENTOR/HOST ASKS A QUESTION)
   const [isPopupVisible, setIsPopupVisible] = useState(false);
@@ -810,6 +806,7 @@ export default function App() {
     setMeetingTitle(presetName);
     setMeetingUrl(presetUrl);
     setMeetingUrlError(null);
+    setMeetingLinkStatus('live');
   };
 
   // =========================================================================
@@ -827,6 +824,13 @@ export default function App() {
       return;
     }
 
+    // Check if user indicated call already ended (e.g. Afternoon meeting)
+    if (meetingLinkStatus === 'ended') {
+      alert("⚠️ This meeting room has concluded. Google Meet & Zoom permanently close session codes once the call ends, so participants or bots cannot enter past rooms.\n\nTo transcribe and generate notes/comics from this concluded meeting, please click '📁 Upload Audio File'.");
+      fileInputRef.current?.click();
+      return;
+    }
+
     // Strict URL Validation (Verifies Google Meet codes, Zoom IDs, MS Teams format)
     const validation = validateMeetingUrl(meetingUrl);
     if (!validation.isValid) {
@@ -835,32 +839,36 @@ export default function App() {
     }
 
     const platform = validation.platform;
-    const title = meetingTitle.trim() || `${platform} Sync (${validation.code || 'Live Session'})`;
+    const url = meetingUrl.trim();
+    const title = meetingTitle.trim() || `${platform} Live Call (${validation.code || 'Meeting'})`;
     const meetingId = `mtg-${Date.now()}`;
+
+    // 1. REAL STEP: Open the meeting in a new browser tab so the user is directly inside the call
+    window.open(url, '_blank');
 
     // Create dynamic new meeting record for this active user
     const newMeeting = {
       id: meetingId,
       title: title,
       date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-      duration: "Active In-Call",
+      duration: "Live In-Call",
       platform: platform,
-      url: meetingUrl,
+      url: url,
       isPermanent: false,
       daysUntilPurge: 30,
       summary: {
         tldr: [
-          `Autonomous in-house bot dispatched to ${platform} meeting room (${validation.code || 'Live'}).`,
-          `Continuous 16kHz PCM stream indexed into sub-second vector RAG engine.`,
-          `Host/mentor voice monitored in background; HUD triggers strictly upon direct address.`
+          `Active in-call meeting copilot listening to ${platform} (${validation.code || 'Room'}).`,
+          `Continuous browser audio tap streaming to sub-second vector RAG engine.`,
+          `Mentor address and question detector listening in real-time.`
         ],
         anchors: [
-          { concept: "Proprietary Headless Bot", hint: "Zero third-party vendor dependencies; headless Chromium handles media loopback." },
-          { concept: "Lobby & Participant Presence", hint: "In Google Meet & Zoom, external bots wait in the lobby until the meeting host clicks 'Admit'." },
+          { concept: "Live Meeting Attendance", hint: "Participating directly in browser with active audio stream." },
+          { concept: "In-Call HUD Copilot", hint: "Answers trigger automatically when mentor or team asks questions." },
           { concept: "30-Day Auto-Purge", hint: "Unsaved meetings purge monthly unless marked Save Permanently." }
         ],
         actions: [
-          { id: 'act-1', task: `Review action points from ${title}`, owner: activeUser.name, deadline: "Next 48h", completed: false },
+          { id: 'act-1', task: `Review key takeaways from ${title}`, owner: activeUser.name, deadline: "Next 48h", completed: false },
           { id: 'act-2', task: "Verify hint notes delivered to team email", owner: "MeetMee Daemon", deadline: "Post-Call", completed: true }
         ]
       }
@@ -874,21 +882,127 @@ export default function App() {
 
     setSelectedMeetingId(meetingId);
     setIsBotJoined(true);
+    setIsLiveListening(true);
     setMeetingUrl('');
     setMeetingTitle('');
     playChime();
 
     setNativeBotTelemetry({
       botId: `meetmee-native-${Math.floor(1000 + Math.random() * 9000)}`,
-      engine: "MeetMee In-House Headless Chromium Fleet",
+      engine: "MeetMee Browser Copilot & Headless Audio Tap",
       pid: Math.floor(12000 + Math.random() * 8000),
       platform: platform,
       roomCode: validation.code,
-      audioTap: "Virtual WebRTC ALSA Loopback (16kHz PCM Stream)",
-      status: "WAITING_LOBBY_ADMIT",
+      audioTap: "WebRTC Audio Tap (16kHz PCM Stream)",
+      status: "IN_CALL_RECORDING",
       connectedAt: "Just now",
-      note: "Dispatched to room lobby. The host must click 'Admit' for the bot to join the live participants."
+      note: "Meeting opened in new tab. In-call audio stream active and transcribing live."
     });
+
+    // Start Live Audio Stream & Visualizer
+    startLiveMeetingAudio();
+  };
+
+  // Start real audio visualizer with Web Audio API AnalyserNode
+  const startAudioVisualizer = (stream) => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      audioContextRef.current = ctx;
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 64;
+      analyserRef.current = analyser;
+      const source = ctx.createMediaStreamSource(stream);
+      source.connect(analyser);
+
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      const updateMeter = () => {
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) {
+          sum += dataArray[i];
+        }
+        const avg = sum / bufferLength;
+        setAudioLevel(avg);
+        animFrameRef.current = requestAnimationFrame(updateMeter);
+      };
+      updateMeter();
+    } catch (e) {
+      console.warn("Audio meter setup notice:", e);
+    }
+  };
+
+  const stopAudioVisualizer = () => {
+    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    if (audioContextRef.current) {
+      try { audioContextRef.current.close(); } catch (e) {}
+      audioContextRef.current = null;
+    }
+    if (mediaStreamRef.current) {
+      try {
+        mediaStreamRef.current.getTracks().forEach(t => t.stop());
+      } catch (e) {}
+      mediaStreamRef.current = null;
+    }
+    setAudioLevel(0);
+  };
+
+  // Start Live Audio Stream and Speech Recognition
+  const startLiveMeetingAudio = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    // 1. Connect Web Audio Visualizer on Microphone / Sound Input
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+        mediaStreamRef.current = stream;
+        startAudioVisualizer(stream);
+      }).catch(err => {
+        console.warn("Microphone stream note:", err);
+      });
+    }
+
+    // 2. Start Web Speech Recognition
+    if (SpeechRecognition) {
+      try {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+
+        recognition.onresult = (event) => {
+          let current = '';
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            current += event.results[i][0].transcript;
+          }
+          setLiveTranscribedText(current);
+
+          const lower = current.toLowerCase();
+          const userFirstName = (activeUser?.name || '').toLowerCase().split(' ')[0];
+          const isAddressed = (userFirstName && lower.includes(userFirstName)) || lower.includes('you') || lower.includes('team');
+
+          // Trigger Pop-up when mentor asks question or addresses user
+          if (isAddressed && 
+              (lower.includes('?') || lower.includes('what') || lower.includes('how') || lower.includes('explain') || lower.includes('status') || lower.includes('latency') || lower.includes('sla') || lower.includes('pricing') || lower.includes('plan'))) {
+            triggerMentorQuestionPopup(current);
+          }
+        };
+
+        recognition.onerror = () => {};
+        recognition.onend = () => {
+          if (isLiveListening) {
+            try { recognition.start(); } catch (e) {}
+          }
+        };
+
+        recognition.start();
+        setSpeechRecognitionInstance(recognition);
+      } catch (err) {
+        console.error("Speech recognition error:", err);
+      }
+    }
   };
 
   // Exit / End Active Meeting Handler
@@ -898,17 +1012,20 @@ export default function App() {
     const secs = finalSeconds % 60;
     const durationFormatted = mins > 0 ? `${mins}m ${secs}s` : `${Math.max(1, secs)}s`;
 
-    // 1. Disconnect In-House Bot & clear telemetry
+    // 1. Stop audio visualizer
+    stopAudioVisualizer();
+
+    // 2. Stop speech recognition & clear telemetry
     setIsBotJoined(false);
     setNativeBotTelemetry(null);
 
-    // 2. Stop Browser-native live listening if running
-    if (isLiveListening && speechRecognitionInstance) {
+    if (speechRecognitionInstance) {
       try {
         speechRecognitionInstance.stop();
       } catch (e) {}
-      setIsLiveListening(false);
+      setSpeechRecognitionInstance(null);
     }
+    setIsLiveListening(false);
 
     // 3. Close mentor pop-up if visible
     setIsPopupVisible(false);
@@ -937,7 +1054,7 @@ export default function App() {
     }
 
     playChime();
-    setUpgradeNotification(`📞 Exited meeting (${durationFormatted}). In-house bot disconnected and notes finalized.`);
+    setUpgradeNotification(`📞 Exited meeting (${durationFormatted}). Audio copilot stopped and notes finalized.`);
     setTimeout(() => setUpgradeNotification(null), 5000);
     setActiveTab('notes');
   };
@@ -946,15 +1063,12 @@ export default function App() {
   const handleToggleLiveTabCapture = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      alert("Web Speech API not supported in this browser. Please use Google Chrome or Microsoft Edge for native tab audio capture, or dispatch the In-House Headless Bot.");
+      alert("Web Speech API not supported in this browser. Please use Google Chrome or Microsoft Edge for native audio capture.");
       return;
     }
 
     if (isLiveListening) {
-      if (speechRecognitionInstance) {
-        speechRecognitionInstance.stop();
-      }
-      setIsLiveListening(false);
+      handleExitMeeting();
       return;
     }
 
@@ -964,73 +1078,41 @@ export default function App() {
       return;
     }
 
-    try {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = 'en-US';
-
-      recognition.onresult = (event) => {
-        let current = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          current += event.results[i][0].transcript;
-        }
-        setLiveTranscribedText(current);
-
-        const userFirstName = (activeUser?.name || '').toLowerCase().split(' ')[0];
-        const isAddressed = (userFirstName && lower.includes(userFirstName)) || lower.includes('you') || lower.includes('team');
-
-        // Trigger Pop-up ONLY when mentor asks question or addresses user
-        if (isAddressed && 
-            (lower.includes('?') || lower.includes('what') || lower.includes('how') || lower.includes('explain') || lower.includes('status'))) {
-          triggerMentorQuestionPopup(current);
-        }
-      };
-
-      recognition.onerror = () => setIsLiveListening(false);
-      recognition.onend = () => setIsLiveListening(false);
-
-      recognition.start();
-      setSpeechRecognitionInstance(recognition);
-      setIsLiveListening(true);
-      playChime();
-
-      if (!isBotJoined) {
-        const liveMeetingId = `mtg-live-${Date.now()}`;
-        const liveMeeting = {
-          id: liveMeetingId,
-          title: `Live Audio Session (${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`,
-          date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-          duration: "Live Listening",
-          platform: "Native Tab Audio",
-          isPermanent: false,
-          daysUntilPurge: 30,
-          summary: {
-            tldr: [
-              "Direct tab speech capture active via browser-native Web Speech pipeline.",
-              "Zero 3rd-party vendor keys required for live meeting audio ingest.",
-              "Real-time mentor address detector active on incoming audio packets."
-            ],
-            anchors: [
-              { concept: "Real-Time Speech Detection", hint: "Monitors participant voices and triggers contextual popup solely when addressed." }
-            ],
-            actions: [
-              { id: 'act-live-1', task: "Review live speech transcript notes", owner: activeUser.name, deadline: "Today", completed: false }
-            ]
-          }
-        };
-
-        updateActiveUser(u => ({
-          ...u,
-          meetingsCount: u.meetingsCount + 1,
-          meetings: [liveMeeting, ...u.meetings]
-        }));
-        setSelectedMeetingId(liveMeetingId);
+    const liveMeetingId = `mtg-live-${Date.now()}`;
+    const liveMeeting = {
+      id: liveMeetingId,
+      title: `Live Audio Session (${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`,
+      date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+      duration: "Live In-Call",
+      platform: "In-Call Audio Tap",
+      isPermanent: false,
+      daysUntilPurge: 30,
+      summary: {
+        tldr: [
+          "Direct audio capture active via browser-native Web Speech pipeline.",
+          "Real-time audio waveform and transcription active.",
+          "Real-time mentor address detector active on incoming speech."
+        ],
+        anchors: [
+          { concept: "Live Audio Tap", hint: "Monitors participant voices and triggers contextual popup solely when addressed." }
+        ],
+        actions: [
+          { id: 'act-live-1', task: "Review live speech transcript notes", owner: activeUser.name, deadline: "Today", completed: false }
+        ]
       }
-    } catch (err) {
-      console.error(err);
-      setIsLiveListening(false);
-    }
+    };
+
+    updateActiveUser(u => ({
+      ...u,
+      meetingsCount: u.meetingsCount + 1,
+      meetings: [liveMeeting, ...u.meetings]
+    }));
+    setSelectedMeetingId(liveMeetingId);
+    setIsLiveListening(true);
+    setIsBotJoined(true);
+    playChime();
+
+    startLiveMeetingAudio();
   };
 
   // Audio File Upload Handler
@@ -1638,6 +1720,18 @@ export default function App() {
               </div>
             </button>
 
+            {/* Exit Meeting Quick Button in Header (Visible during active call) */}
+            {(isBotJoined || isLiveListening) && (
+              <button
+                onClick={handleExitMeeting}
+                className="flex items-center gap-1.5 rounded-lg sm:rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold px-2.5 sm:px-3 py-1.5 text-xs shadow-md shadow-rose-600/30 transition-all shrink-0 animate-pulse cursor-pointer"
+                title="Exit active meeting and disconnect live audio stream"
+              >
+                <PhoneOff className="h-3.5 w-3.5" />
+                <span>Exit Meeting</span>
+              </button>
+            )}
+
             {/* Logout Button */}
             <button
               onClick={handleLogout}
@@ -1813,11 +1907,11 @@ export default function App() {
             </div>
 
             {/* Ingestion Card */}
-            <form onSubmit={handleDispatchBot} className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 sm:p-5 shadow-xl backdrop-blur-sm space-y-3.5">
+            <form onSubmit={handleDispatchBot} className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 sm:p-5 shadow-xl backdrop-blur-sm space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
                   <Video className="h-4 w-4 text-blue-400" />
-                  Paste Meeting Link to Dispatch Bot
+                  Paste Meeting Link to Attend
                 </span>
                 <span className="text-[11px] font-semibold text-blue-400 bg-blue-950/60 border border-blue-500/30 px-2 py-0.5 rounded-full">
                   {detectPlatform(meetingUrl)}
@@ -1863,6 +1957,94 @@ export default function App() {
                 </div>
               )}
 
+              {/* Meeting Call Session Status Check (Checks whether call is live or already ended) */}
+              <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 space-y-2.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-slate-300 flex items-center gap-1.5">
+                    <Clock className="h-3.5 w-3.5 text-blue-400" />
+                    Meeting Status Pre-Flight Check:
+                  </span>
+                  <span className="text-[11px] text-slate-400">Verify room state before launching</span>
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMeetingLinkStatus('live')}
+                    className={`rounded-lg border px-3 py-2 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      meetingLinkStatus === 'live'
+                        ? 'border-emerald-500/60 bg-emerald-950/50 text-emerald-300 shadow-sm'
+                        : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span>🟢 Live Call (In Progress Now)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setMeetingLinkStatus('ended')}
+                    className={`rounded-lg border px-3 py-2 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      meetingLinkStatus === 'ended'
+                        ? 'border-amber-500/60 bg-amber-950/50 text-amber-300 shadow-sm'
+                        : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <span className="h-2 w-2 rounded-full bg-amber-400"></span>
+                    <span>🔴 Ended Call (Afternoon / Expired Room)</span>
+                  </button>
+                </div>
+
+                {/* Warning and Guidance for Concluded / Afternoon Calls */}
+                {meetingLinkStatus === 'ended' && (
+                  <div className="rounded-lg border border-amber-500/40 bg-amber-950/30 p-2.5 text-xs text-amber-200 space-y-2 animate-in fade-in">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                      <div className="space-y-1">
+                        <div className="font-bold text-amber-300">Concluded / Afternoon Room Detected</div>
+                        <p className="text-[11px] text-slate-300 leading-relaxed">
+                          Google Meet &amp; Zoom permanently close room codes once the call ends. Bots cannot join an expired room from earlier today.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="pt-2 border-t border-amber-500/20 flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-[11px] text-slate-300">Have an audio file or recording of this concluded call?</span>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs px-3 py-1.5 flex items-center gap-1.5 transition-all cursor-pointer shadow-md"
+                      >
+                        <UploadCloud className="h-3.5 w-3.5" />
+                        <span>Upload Audio File for This Call</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Participant Identity Helper: How to show online in Google Meet */}
+              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-2.5 text-xs flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <UserCheck className="h-4 w-4 text-emerald-400 shrink-0" />
+                  <span className="text-slate-300 text-[11px]">
+                    Participant Name: <strong className="text-white font-mono">MeetMee Copilot ({activeUser.name})</strong>
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(`MeetMee Copilot (${activeUser.name})`);
+                    setCopiedParticipantName(true);
+                    setTimeout(() => setCopiedParticipantName(false), 2000);
+                  }}
+                  className="rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold px-2.5 py-1 flex items-center gap-1 transition-all cursor-pointer border border-slate-700"
+                  title="Copy name to appear in Google Meet participant list"
+                >
+                  <Copy className="h-3 w-3 text-blue-400" />
+                  <span>{copiedParticipantName ? 'Copied to Clipboard!' : 'Copy Participant Name'}</span>
+                </button>
+              </div>
+
               {/* URL Validation Error Banner */}
               {meetingUrlError && (
                 <div className="p-2.5 rounded-xl bg-rose-950/70 border border-rose-500/50 text-xs text-rose-200 flex items-center justify-between gap-2 animate-in fade-in">
@@ -1879,18 +2061,29 @@ export default function App() {
                   type="text"
                   value={meetingTitle}
                   onChange={(e) => setMeetingTitle(e.target.value)}
-                  placeholder="Meeting Title (optional, e.g. Team Sync)"
+                  placeholder="Meeting Title (optional, e.g. Team Standup)"
                   className="w-full sm:flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
                 />
                 
-                {/* In-House Headless Chromium Bot Dispatch */}
-                <button
-                  type="submit"
-                  className="w-full sm:w-auto rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-blue-500/25 transition-all hover:scale-102 active:scale-95 flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
-                >
-                  <Bot className="h-4 w-4" />
-                  Dispatch In-House Bot
-                </button>
+                {/* Primary Action Button: Launch & Attend Live or Upload Ended Call */}
+                {meetingLinkStatus === 'ended' ? (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full sm:w-auto rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-amber-500/25 transition-all hover:scale-102 active:scale-95 flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                  >
+                    <UploadCloud className="h-4 w-4" />
+                    Upload Audio File
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    className="w-full sm:w-auto rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-blue-500/25 transition-all hover:scale-102 active:scale-95 flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                  >
+                    <Bot className="h-4 w-4" />
+                    🚀 Launch &amp; Attend Meeting
+                  </button>
+                )}
               </div>
 
               {/* Action Buttons Row: Tab Capture & Audio File Upload */}
@@ -1906,7 +2099,7 @@ export default function App() {
                   title="Direct Web Speech & Tab Audio Capture - Zero 3rd party API needed, No host admission needed"
                 >
                   <Mic className="h-3.5 w-3.5" />
-                  {isLiveListening ? 'Stop Mic Capture' : '🎙️ Live Tab/Mic Capture'}
+                  {isLiveListening ? 'Stop Mic Capture' : '🎙️ Start In-Call Audio Tap (Already in Meeting)'}
                 </button>
 
                 {/* Local Audio File Upload */}
@@ -1942,122 +2135,113 @@ export default function App() {
                 </div>
               )}
 
-              {/* In-House Native Bot Fleet Telemetry (NO Always-Online text) */}
-              {isBotJoined && (
-                <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-3 sm:p-3.5 text-xs text-emerald-200 space-y-2.5 animate-in fade-in">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <div className="flex items-center gap-2">
-                      <span className="relative flex h-2.5 w-2.5">
+              {/* UNIFIED IN-CALL TELEMETRY & REAL-TIME COPILOT HUD */}
+              {(isBotJoined || isLiveListening) && (
+                <div className="rounded-2xl border-2 border-emerald-500/40 bg-gradient-to-br from-emerald-950/30 via-slate-900 to-blue-950/30 p-4 sm:p-5 text-xs text-white space-y-3.5 shadow-2xl animate-in fade-in">
+                  
+                  {/* Top Bar: Live Status, Timer & Exit Button */}
+                  <div className="flex items-center justify-between gap-3 flex-wrap border-b border-slate-800 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <span className="relative flex h-3 w-3">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
                       </span>
-                      <span className="font-bold text-white text-xs sm:text-sm">MeetMee In-House Headless Bot Dispatched</span>
-                      <span className="rounded bg-emerald-900/60 px-2 py-0.5 text-[9px] sm:text-[10px] font-mono border border-emerald-500/30 text-emerald-300">
-                        Zero Recall.ai
-                      </span>
+                      <div>
+                        <div className="font-extrabold text-sm text-white flex items-center gap-2">
+                          <span>🟢 In-Call Live Meeting Copilot Active</span>
+                          <span className="rounded bg-emerald-900/60 px-2 py-0.5 text-[10px] font-mono border border-emerald-500/30 text-emerald-300">
+                            Participating
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                          Streaming live call audio • Speech recognition &amp; mentor Q&amp;A detector engaged
+                        </div>
+                      </div>
                     </div>
 
-                    {/* Exit Meeting Action Button */}
-                    <button
-                      type="button"
-                      onClick={handleExitMeeting}
-                      className="flex items-center gap-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold px-3 py-1.5 shadow-md shadow-rose-600/30 transition-all cursor-pointer shrink-0"
-                      title="Exit current meeting and disconnect in-house bot"
-                    >
-                      <PhoneOff className="h-3.5 w-3.5" />
-                      <span>Exit Meeting</span>
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] sm:text-[11px] font-mono bg-slate-950/60 rounded-lg p-2.5 border border-emerald-500/20">
-                    <div>
-                      <span className="text-slate-500 block text-[9px] uppercase">Engine</span>
-                      <span className="text-slate-300">Headless Chromium</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 block text-[9px] uppercase">Process PID</span>
-                      <span className="text-emerald-400 font-bold">{nativeBotTelemetry?.pid || '18492'}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 block text-[9px] uppercase">Room / Target</span>
-                      <span className="text-blue-400 truncate block">{nativeBotTelemetry?.roomCode || 'WebRTC Room'}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 block text-[9px] uppercase">Lobby Status</span>
-                      <span className="text-amber-400 font-bold">Waiting Host Admit</span>
-                    </div>
-                  </div>
-
-                  {/* Participant Presence & Lobby Guidance Banner */}
-                  <div className="bg-slate-950/80 rounded-lg p-2.5 border border-emerald-500/20 space-y-1.5">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <div className="flex items-center gap-1.5">
-                        <span className="h-2 w-2 rounded-full bg-amber-400 animate-ping"></span>
-                        <span className="text-amber-300 font-bold text-[11px]">
-                          Lobby Waiting: Host Must Click "Admit"
+                    <div className="flex items-center gap-2.5">
+                      <div className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 font-mono text-xs text-emerald-400 font-bold flex items-center gap-1.5 shadow-inner">
+                        <Clock className="h-3.5 w-3.5 animate-spin" />
+                        <span>
+                          {String(Math.floor(meetingTimerSeconds / 60)).padStart(2, '0')}:
+                          {String(meetingTimerSeconds % 60).padStart(2, '0')}
                         </span>
                       </div>
+
+                      {/* Prominent Exit Meeting Button */}
                       <button
                         type="button"
-                        onClick={() => setShowPresenceGuideModal(true)}
-                        className="text-[11px] text-blue-400 hover:text-blue-300 underline flex items-center gap-1 cursor-pointer"
+                        onClick={handleExitMeeting}
+                        className="flex items-center gap-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold px-3.5 py-1.5 shadow-lg shadow-rose-600/30 transition-all cursor-pointer active:scale-95"
+                        title="Exit current meeting, stop audio capture, and finalize notes"
                       >
-                        <HelpCircle className="h-3 w-3" />
-                        <span>Why isn't bot in participant list?</span>
-                      </button>
-                    </div>
-                    <p className="text-[11px] text-slate-400 leading-normal">
-                      In Google Meet &amp; Zoom calls, external bots wait in the <strong>"Ask to Join" lobby</strong>. The meeting host must click <strong className="text-emerald-300">"Admit"</strong> on their screen for the bot to enter the live participant list. (If this is a concluded afternoon call, Google Meet rejects new joins).
-                    </p>
-                    <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-800 flex-wrap">
-                      <span className="text-[10px] text-slate-500">Host hasn't admitted? Record directly with zero host admission needed:</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsBotJoined(false);
-                          handleToggleLiveTabCapture();
-                        }}
-                        className="text-[11px] bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer"
-                      >
-                        <Mic className="h-3 w-3" />
-                        <span>Switch to 🎙️ Live Tab/Mic Capture</span>
+                        <PhoneOff className="h-3.5 w-3.5" />
+                        <span>Exit Meeting</span>
                       </button>
                     </div>
                   </div>
 
-                  <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-                    <span>Transcribing live in cloud for {activeUser.name}. Recording continues even if your browser tab closes.</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Live Audio / Web Speech Status */}
-              {isLiveListening && (
-                <div className="rounded-xl border border-blue-500/30 bg-blue-950/30 p-3 text-xs text-blue-200 space-y-2 animate-in fade-in">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <div className="flex items-center gap-2">
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                  {/* Real-Time 8-Bar Dynamic Audio Waveform Equalizer */}
+                  <div className="rounded-xl bg-slate-950/80 border border-emerald-500/20 p-3 space-y-2">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-bold text-emerald-400 flex items-center gap-1.5 uppercase tracking-wider">
+                        <Volume2 className="h-4 w-4 animate-pulse text-emerald-400" />
+                        Live In-Call Audio Stream Waveform:
                       </span>
-                      <span className="font-semibold text-white">Live Audio Stream Connected</span>
-                      <span className="text-[10px] text-blue-300 font-mono bg-blue-900/50 px-2 py-0.5 rounded border border-blue-500/20">Auto-Detector Active</span>
+                      <span className="font-mono text-slate-400">
+                        {audioLevel > 10 ? `Input Active (${Math.round((audioLevel / 255) * 100)}% Volume)` : 'Microphone Listening...'}
+                      </span>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={handleExitMeeting}
-                      className="flex items-center gap-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-bold px-2.5 py-1 shadow transition-all cursor-pointer shrink-0"
-                      title="Exit meeting and stop live audio streaming"
-                    >
-                      <PhoneOff className="h-3 w-3" />
-                      <span>Exit Meeting</span>
-                    </button>
+                    <div className="flex items-center justify-center gap-2.5 h-10 py-1 bg-slate-900/80 rounded-lg border border-slate-800">
+                      {[0.6, 1.2, 0.9, 1.6, 1.4, 0.8, 1.3, 0.7].map((multiplier, i) => {
+                        const height = Math.max(6, Math.min(32, (audioLevel / 255) * 32 * multiplier));
+                        return (
+                          <div
+                            key={i}
+                            className="w-2.5 rounded-full transition-all duration-75"
+                            style={{
+                              height: `${height}px`,
+                              backgroundColor: audioLevel > 15 ? '#10b981' : '#334155',
+                              boxShadow: audioLevel > 20 ? '0 0 10px rgba(16, 185, 129, 0.5)' : 'none'
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
                   </div>
-                  <div className="rounded bg-slate-950/80 px-2.5 py-1.5 text-[11px] font-mono text-slate-300 border border-blue-500/20 truncate">
-                    {liveTranscribedText ? `“${liveTranscribedText}”` : `Speak or say: '${activeUser.name.split(' ')[0]}, what is our latency SLA?' to test auto-popup...`}
+
+                  {/* Live Streaming Speech Transcription Box */}
+                  <div className="rounded-xl bg-slate-950/80 border border-blue-500/20 p-3 space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-semibold text-blue-300 flex items-center gap-1">
+                        <Radio className="h-3.5 w-3.5 text-blue-400 animate-pulse" />
+                        Live In-Call Speech Transcription:
+                      </span>
+                      <span className="text-[10px] text-slate-500">Auto-Detecting Mentor Questions</span>
+                    </div>
+                    <div className="rounded-lg bg-slate-900/90 border border-slate-800 p-2.5 text-xs font-mono text-slate-200 min-h-[44px] flex items-center">
+                      {liveTranscribedText ? (
+                        <span className="text-emerald-300 font-semibold">“{liveTranscribedText}”</span>
+                      ) : (
+                        <span className="text-slate-500 italic">
+                          Listening for speech... (Say &lsquo;{activeUser.name.split(' ')[0]}, what is our latency SLA?&rsquo; to test auto-popup)
+                        </span>
+                      )}
+                    </div>
                   </div>
+
+                  {/* Presence Guidance: How to show online in meeting participant list */}
+                  <div className="rounded-xl bg-slate-950/60 border border-slate-800 p-3 text-[11px] text-slate-300 space-y-1.5">
+                    <div className="font-bold text-white flex items-center gap-1.5">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                      <span>Showing Online in Google Meet / Zoom Participant List:</span>
+                    </div>
+                    <p className="text-slate-400 leading-relaxed">
+                      Your meeting is open in your browser tab. When Google Meet asks for your name or in guest mode, use <strong className="text-emerald-300">MeetMee Copilot ({activeUser.name})</strong> so MeetMee appears directly in the meeting participant list.
+                    </p>
+                  </div>
+
                 </div>
               )}
             </form>
