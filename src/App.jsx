@@ -58,7 +58,10 @@ import {
   EyeOff,
   Key,
   QrCode,
-  CreditCard
+  CreditCard,
+  Info,
+  HelpCircle,
+  AlertCircle
 } from 'lucide-react';
 import paymentQrImage from './assets/payment_qr.jpg';
 
@@ -147,6 +150,117 @@ export const getSubscriptionValidity = (user) => {
       : isEndingSoon
         ? `⚠️ Ending in ${daysRemaining} days (Expires ${expiryDateFormatted})`
         : `Active: ${daysRemaining} days remaining (Expires ${expiryDateFormatted})`
+  };
+};
+
+// =========================================================================
+// MEETING URL VALIDATOR & PLATFORM PARSER
+// =========================================================================
+export const validateMeetingUrl = (rawUrl) => {
+  if (!rawUrl || !rawUrl.trim()) {
+    return {
+      isValid: false,
+      platform: 'Unknown',
+      error: 'Please enter a meeting link',
+      code: null
+    };
+  }
+
+  const clean = rawUrl.trim();
+  let urlObj;
+  try {
+    const withProto = clean.startsWith('http://') || clean.startsWith('https://') 
+      ? clean 
+      : `https://${clean}`;
+    urlObj = new URL(withProto);
+  } catch (err) {
+    return {
+      isValid: false,
+      platform: 'Invalid URL',
+      error: 'Invalid URL format. Please enter a valid meeting invite link.',
+      code: null
+    };
+  }
+
+  const host = urlObj.hostname.toLowerCase();
+  const path = urlObj.pathname;
+
+  // 1. Google Meet Validation
+  if (host.includes('meet.google.com')) {
+    // Google Meet meeting codes are typically 10 characters (3-4-3) like abc-defg-hij, or lookup codes
+    const meetCodeMatch = path.match(/^\/([a-z0-9]{3}-[a-z0-9]{4}-[a-z0-9]{3}|\w{9,12}|lookup\/[\w-]+)\/?$/i);
+    if (!meetCodeMatch) {
+      return {
+        isValid: false,
+        platform: 'Google Meet',
+        error: 'Incomplete Google Meet link. Google Meet links must include the 10-letter meeting code (e.g., meet.google.com/abc-defg-hij).',
+        code: null
+      };
+    }
+    return {
+      isValid: true,
+      platform: 'Google Meet',
+      error: null,
+      code: meetCodeMatch[1],
+      note: 'Google Meet requires the host to click "Admit" in the lobby. If this call ended earlier today, Google Meet rejects new connections.'
+    };
+  }
+
+  // 2. Zoom Validation
+  if (host.includes('zoom.us')) {
+    const zoomMatch = path.match(/^\/(j|my|wc|w)\/([a-zA-Z0-9_-]+)\/?$/i);
+    if (!zoomMatch || !zoomMatch[2] || zoomMatch[2].length < 5) {
+      return {
+        isValid: false,
+        platform: 'Zoom',
+        error: 'Incomplete Zoom link. Zoom links must include a valid meeting ID (e.g., zoom.us/j/94827103841).',
+        code: null
+      };
+    }
+    return {
+      isValid: true,
+      platform: 'Zoom',
+      error: null,
+      code: zoomMatch[2],
+      note: 'Zoom requires the host to admit participants from the Waiting Room.'
+    };
+  }
+
+  // 3. Microsoft Teams Validation
+  if (host.includes('teams.microsoft.com') || host.includes('teams.live.com')) {
+    if (!path || path === '/' || (!path.includes('meet') && !path.includes('meetup-join'))) {
+      return {
+        isValid: false,
+        platform: 'Microsoft Teams',
+        error: 'Incomplete Microsoft Teams link. Missing meetup-join or meeting ID path.',
+        code: null
+      };
+    }
+    return {
+      isValid: true,
+      platform: 'Microsoft Teams',
+      error: null,
+      code: 'teams-meeting',
+      note: 'Teams meetings with lobby protection require host approval to join.'
+    };
+  }
+
+  // 4. Other WebRTC platforms (Whereby, Chime, Webex)
+  if (path && path.length > 3 && path !== '/') {
+    return {
+      isValid: true,
+      platform: 'WebRTC Call',
+      error: null,
+      code: path.replace(/^\//, ''),
+      note: 'Ensure the host has opened the meeting room.'
+    };
+  }
+
+  return {
+    isValid: false,
+    platform: 'Unknown Platform',
+    error: 'Please paste a valid meeting URL from Google Meet, Zoom, or Microsoft Teams.',
+    code: null
   };
 };
 
@@ -522,6 +636,8 @@ export default function App() {
   const [isBotJoined, setIsBotJoined] = useState(false);
   const [activeTab, setActiveTab] = useState('notes'); // 'history', 'notes', 'comic', 'podcast', 'assistant', 'pricing'
   const [upgradeNotification, setUpgradeNotification] = useState(null);
+  const [showPresenceGuideModal, setShowPresenceGuideModal] = useState(false);
+  const [meetingUrlError, setMeetingUrlError] = useState(null);
 
   // In-House Native Bot & Direct Tab Capture States
   const [isLiveListening, setIsLiveListening] = useState(false);
@@ -693,6 +809,7 @@ export default function App() {
   const handleApplyPreset = (presetName, presetUrl) => {
     setMeetingTitle(presetName);
     setMeetingUrl(presetUrl);
+    setMeetingUrlError(null);
   };
 
   // =========================================================================
@@ -700,6 +817,7 @@ export default function App() {
   // =========================================================================
   const handleDispatchBot = (e) => {
     e.preventDefault();
+    setMeetingUrlError(null);
     if (!meetingUrl.trim()) return;
 
     // Check Free tier limit (3 meetings)
@@ -709,8 +827,15 @@ export default function App() {
       return;
     }
 
-    const platform = detectPlatform(meetingUrl);
-    const title = meetingTitle.trim() || `${platform} Strategy & Review`;
+    // Strict URL Validation (Verifies Google Meet codes, Zoom IDs, MS Teams format)
+    const validation = validateMeetingUrl(meetingUrl);
+    if (!validation.isValid) {
+      setMeetingUrlError(validation.error);
+      return;
+    }
+
+    const platform = validation.platform;
+    const title = meetingTitle.trim() || `${platform} Sync (${validation.code || 'Live Session'})`;
     const meetingId = `mtg-${Date.now()}`;
 
     // Create dynamic new meeting record for this active user
@@ -725,12 +850,13 @@ export default function App() {
       daysUntilPurge: 30,
       summary: {
         tldr: [
-          `Autonomous in-house bot joined ${platform} session with headless WebRTC audio tap.`,
+          `Autonomous in-house bot dispatched to ${platform} meeting room (${validation.code || 'Live'}).`,
           `Continuous 16kHz PCM stream indexed into sub-second vector RAG engine.`,
           `Host/mentor voice monitored in background; HUD triggers strictly upon direct address.`
         ],
         anchors: [
           { concept: "Proprietary Headless Bot", hint: "Zero third-party vendor dependencies; headless Chromium handles media loopback." },
+          { concept: "Lobby & Participant Presence", hint: "In Google Meet & Zoom, external bots wait in the lobby until the meeting host clicks 'Admit'." },
           { concept: "30-Day Auto-Purge", hint: "Unsaved meetings purge monthly unless marked Save Permanently." }
         ],
         actions: [
@@ -757,9 +883,11 @@ export default function App() {
       engine: "MeetMee In-House Headless Chromium Fleet",
       pid: Math.floor(12000 + Math.random() * 8000),
       platform: platform,
+      roomCode: validation.code,
       audioTap: "Virtual WebRTC ALSA Loopback (16kHz PCM Stream)",
-      status: "IN_CALL_RECORDING",
-      connectedAt: "Just now"
+      status: "WAITING_LOBBY_ADMIT",
+      connectedAt: "Just now",
+      note: "Dispatched to room lobby. The host must click 'Admit' for the bot to join the live participants."
     });
   };
 
@@ -1628,25 +1756,60 @@ export default function App() {
               </span>
               <button
                 type="button"
-                onClick={() => setMeetingUrl("https://meet.google.com/")}
+                onClick={() => handleApplyPreset("Google Meet Sprint Review", "https://meet.google.com/zqb-wmpk-tva")}
                 className="rounded-lg bg-slate-900 border border-slate-800 hover:border-blue-500/50 px-2 py-1 text-[11px] text-slate-300 hover:text-white transition-all cursor-pointer"
+                title="Google Meet with valid room code (zqb-wmpk-tva)"
               >
-                Google Meet
+                Google Meet (zqb-wmpk-tva)
               </button>
               <button
                 type="button"
-                onClick={() => setMeetingUrl("https://zoom.us/j/")}
+                onClick={() => handleApplyPreset("Zoom Client Standup", "https://zoom.us/j/94827103841")}
                 className="rounded-lg bg-slate-900 border border-slate-800 hover:border-blue-500/50 px-2 py-1 text-[11px] text-slate-300 hover:text-white transition-all cursor-pointer"
+                title="Zoom Call with valid meeting ID (948-271-03841)"
               >
-                Zoom Call
+                Zoom Call (948-271-03841)
               </button>
               <button
                 type="button"
-                onClick={() => setMeetingUrl("https://teams.microsoft.com/")}
+                onClick={() => handleApplyPreset("MS Teams Architecture Sync", "https://teams.microsoft.com/l/meetup-join/19%3ameeting_sync%40thread.v2/0")}
                 className="rounded-lg bg-slate-900 border border-slate-800 hover:border-blue-500/50 px-2 py-1 text-[11px] text-slate-300 hover:text-white transition-all cursor-pointer"
+                title="Microsoft Teams with valid meetup-join link"
               >
-                MS Teams
+                MS Teams Meeting
               </button>
+            </div>
+
+            {/* Informational Guidance: Ended / Afternoon Meetings & Participant Presence */}
+            <div className="rounded-2xl border border-blue-500/30 bg-gradient-to-r from-blue-950/40 via-slate-900 to-indigo-950/40 p-3.5 sm:p-4 text-xs space-y-2 shadow-lg">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-2.5">
+                  <div className="h-7 w-7 rounded-xl bg-blue-500/20 border border-blue-500/40 flex items-center justify-center shrink-0 mt-0.5">
+                    <Info className="h-4 w-4 text-blue-400" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-white text-xs sm:text-sm flex items-center gap-2 flex-wrap">
+                      <span>Testing with an Ended / Afternoon Call?</span>
+                      <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-medium">
+                        Meeting Notice
+                      </span>
+                    </div>
+                    <p className="text-slate-300 text-[11px] sm:text-xs mt-1 leading-relaxed">
+                      Google Meet &amp; Zoom permanently terminate room codes once the call ends. Bots cannot join an expired room from earlier today. 
+                      If your meeting already concluded, use <strong className="text-blue-300">Upload Audio File</strong> for instant summary &amp; comics. 
+                      For live calls, external bots require the host to click <strong className="text-emerald-300">"Admit"</strong> in the lobby — or use <strong className="text-emerald-300">🎙️ Live Tab/Mic Capture</strong> for instant host-free recording!
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPresenceGuideModal(true)}
+                  className="bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 hover:text-white text-[11px] font-bold px-3 py-1.5 rounded-xl transition-all flex items-center gap-1 shrink-0 cursor-pointer"
+                >
+                  <HelpCircle className="h-3.5 w-3.5" />
+                  <span>Presence Guide</span>
+                </button>
+              </div>
             </div>
 
             {/* Ingestion Card */}
@@ -1665,10 +1828,51 @@ export default function App() {
                 type="url"
                 required
                 value={meetingUrl}
-                onChange={(e) => setMeetingUrl(e.target.value)}
-                placeholder="Paste your Google Meet, Zoom, or Teams invite link here..."
+                onChange={(e) => {
+                  setMeetingUrl(e.target.value);
+                  if (meetingUrlError) setMeetingUrlError(null);
+                }}
+                placeholder="Paste your Google Meet (meet.google.com/xxx-yyyy-zzz), Zoom, or Teams link..."
                 className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 sm:py-3 text-xs sm:text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
               />
+
+              {/* Dynamic Real-Time URL Validation Status Indicator */}
+              {meetingUrl.trim() && (
+                <div className="animate-in fade-in">
+                  {(() => {
+                    const validation = validateMeetingUrl(meetingUrl);
+                    if (validation.isValid) {
+                      return (
+                        <div className="flex items-center gap-1.5 text-[11px] text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 rounded-lg px-2.5 py-1.5">
+                          <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+                          <span>Valid {validation.platform} format {validation.code ? `(Room: ${validation.code})` : ''}</span>
+                        </div>
+                      );
+                    } else {
+                      return (
+                        <div className="flex items-start gap-1.5 text-[11px] text-rose-300 bg-rose-950/50 border border-rose-500/40 rounded-lg px-2.5 py-1.5">
+                          <AlertCircle className="h-3.5 w-3.5 shrink-0 text-rose-400 mt-0.5" />
+                          <div className="space-y-0.5">
+                            <div className="font-semibold text-rose-200">{validation.error}</div>
+                            <div className="text-[10px] text-rose-300/80">Example format: meet.google.com/abc-defg-hij or zoom.us/j/94827103841</div>
+                          </div>
+                        </div>
+                      );
+                    }
+                  })()}
+                </div>
+              )}
+
+              {/* URL Validation Error Banner */}
+              {meetingUrlError && (
+                <div className="p-2.5 rounded-xl bg-rose-950/70 border border-rose-500/50 text-xs text-rose-200 flex items-center justify-between gap-2 animate-in fade-in">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 text-rose-400 shrink-0" />
+                    <span>{meetingUrlError}</span>
+                  </div>
+                  <button type="button" onClick={() => setMeetingUrlError(null)} className="text-slate-400 hover:text-white text-xs cursor-pointer">✕</button>
+                </div>
+              )}
 
               <div className="flex flex-col sm:flex-row gap-2">
                 <input
@@ -1682,7 +1886,7 @@ export default function App() {
                 {/* In-House Headless Chromium Bot Dispatch */}
                 <button
                   type="submit"
-                  className="w-full sm:w-auto rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-blue-500/25 transition-all hover:scale-102 active:scale-95 flex items-center justify-center gap-1.5 shrink-0"
+                  className="w-full sm:w-auto rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-blue-500/25 transition-all hover:scale-102 active:scale-95 flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
                 >
                   <Bot className="h-4 w-4" />
                   Dispatch In-House Bot
@@ -1694,12 +1898,12 @@ export default function App() {
                 <button
                   type="button"
                   onClick={handleToggleLiveTabCapture}
-                  className={`flex-1 min-w-[160px] rounded-xl border px-3 py-2 text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  className={`flex-1 min-w-[160px] rounded-xl border px-3 py-2 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                     isLiveListening
                       ? 'border-red-500/50 bg-red-950/60 text-red-200 animate-pulse'
                       : 'border-emerald-500/40 bg-emerald-950/40 text-emerald-300 hover:bg-emerald-900/50'
                   }`}
-                  title="Direct Web Speech & Tab Audio Capture - Zero 3rd party API needed"
+                  title="Direct Web Speech & Tab Audio Capture - Zero 3rd party API needed, No host admission needed"
                 >
                   <Mic className="h-3.5 w-3.5" />
                   {isLiveListening ? 'Stop Mic Capture' : '🎙️ Live Tab/Mic Capture'}
@@ -1709,7 +1913,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-slate-700 px-3 py-2 text-xs font-semibold text-slate-300 transition-all flex items-center justify-center gap-1.5"
+                  className="rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-slate-700 px-3 py-2 text-xs font-semibold text-slate-300 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                   title="Upload .mp3, .wav, or .m4a audio file of a past meeting"
                 >
                   <UploadCloud className="h-3.5 w-3.5 text-blue-400" />
@@ -1731,7 +1935,7 @@ export default function App() {
                   <button 
                     type="button"
                     onClick={() => setActiveTab('pricing')} 
-                    className="text-amber-400 font-semibold hover:underline text-left sm:text-right"
+                    className="text-amber-400 font-semibold hover:underline text-left sm:text-right cursor-pointer"
                   >
                     Upgrade for 100 or Unlimited →
                   </button>
@@ -1747,7 +1951,7 @@ export default function App() {
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                         <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
                       </span>
-                      <span className="font-bold text-white text-xs sm:text-sm">MeetMee In-House Headless Bot Active</span>
+                      <span className="font-bold text-white text-xs sm:text-sm">MeetMee In-House Headless Bot Dispatched</span>
                       <span className="rounded bg-emerald-900/60 px-2 py-0.5 text-[9px] sm:text-[10px] font-mono border border-emerald-500/30 text-emerald-300">
                         Zero Recall.ai
                       </span>
@@ -1775,12 +1979,49 @@ export default function App() {
                       <span className="text-emerald-400 font-bold">{nativeBotTelemetry?.pid || '18492'}</span>
                     </div>
                     <div>
-                      <span className="text-slate-500 block text-[9px] uppercase">Audio Sink</span>
-                      <span className="text-blue-400">16kHz WebRTC</span>
+                      <span className="text-slate-500 block text-[9px] uppercase">Room / Target</span>
+                      <span className="text-blue-400 truncate block">{nativeBotTelemetry?.roomCode || 'WebRTC Room'}</span>
                     </div>
                     <div>
-                      <span className="text-slate-500 block text-[9px] uppercase">Status</span>
-                      <span className="text-emerald-400 font-bold">Recording</span>
+                      <span className="text-slate-500 block text-[9px] uppercase">Lobby Status</span>
+                      <span className="text-amber-400 font-bold">Waiting Host Admit</span>
+                    </div>
+                  </div>
+
+                  {/* Participant Presence & Lobby Guidance Banner */}
+                  <div className="bg-slate-950/80 rounded-lg p-2.5 border border-emerald-500/20 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full bg-amber-400 animate-ping"></span>
+                        <span className="text-amber-300 font-bold text-[11px]">
+                          Lobby Waiting: Host Must Click "Admit"
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowPresenceGuideModal(true)}
+                        className="text-[11px] text-blue-400 hover:text-blue-300 underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <HelpCircle className="h-3 w-3" />
+                        <span>Why isn't bot in participant list?</span>
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-normal">
+                      In Google Meet &amp; Zoom calls, external bots wait in the <strong>"Ask to Join" lobby</strong>. The meeting host must click <strong className="text-emerald-300">"Admit"</strong> on their screen for the bot to enter the live participant list. (If this is a concluded afternoon call, Google Meet rejects new joins).
+                    </p>
+                    <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-800 flex-wrap">
+                      <span className="text-[10px] text-slate-500">Host hasn't admitted? Record directly with zero host admission needed:</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsBotJoined(false);
+                          handleToggleLiveTabCapture();
+                        }}
+                        className="text-[11px] bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer"
+                      >
+                        <Mic className="h-3 w-3" />
+                        <span>Switch to 🎙️ Live Tab/Mic Capture</span>
+                      </button>
                     </div>
                   </div>
 
@@ -3712,7 +3953,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setShowPaymentModal(false)}
-                  className="rounded-xl border border-slate-700 bg-slate-800 text-slate-300 text-xs font-semibold px-4 py-2 hover:bg-slate-700"
+                  className="rounded-xl border border-slate-700 bg-slate-800 text-slate-300 text-xs font-semibold px-4 py-2 hover:bg-slate-700 cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -3735,6 +3976,120 @@ export default function App() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* PARTICIPANT PRESENCE & ENDED CALLS GUIDE MODAL */}
+      {/* ========================================================================= */}
+      {showPresenceGuideModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto animate-in fade-in">
+          <div className="w-full max-w-2xl bg-slate-900 border border-slate-700/80 rounded-2xl p-5 sm:p-6 shadow-2xl space-y-4 my-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="h-9 w-9 rounded-xl bg-blue-500/20 border border-blue-500/40 flex items-center justify-center text-blue-400 shrink-0">
+                  <HelpCircle className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Google Meet &amp; Zoom Presence Guide</h3>
+                  <p className="text-[11px] text-slate-400">Understanding bot participant admission &amp; ended call links</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPresenceGuideModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Explainer Cards */}
+            <div className="space-y-3 text-xs">
+              
+              {/* Card 1: Why did an afternoon meeting link fail/get blocked? */}
+              <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-3.5 space-y-1.5">
+                <div className="flex items-center gap-2 text-amber-300 font-bold">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span>1. Why Afternoon / Concluded Meetings Cannot Be Joined Live</span>
+                </div>
+                <p className="text-slate-300 text-[11px] sm:text-xs leading-relaxed">
+                  Google Meet and Zoom invalidate temporary room codes once the meeting ends and participants hang up. If you enter an afternoon meeting code hours later, Google Meet displays: <strong className="text-amber-200">"You can't join this call — The meeting has ended."</strong>
+                </p>
+                <div className="bg-slate-950/70 rounded-lg p-2.5 border border-amber-500/20 text-[11px] text-slate-300 flex items-center gap-2">
+                  <span className="text-amber-400 font-bold">👉 For Past Meetings:</span>
+                  <span>Use the <strong className="text-white">"Upload Audio File"</strong> button to upload the meeting recording (.mp3 / .wav / .m4a) for instant AI notes &amp; comics.</span>
+                </div>
+              </div>
+
+              {/* Card 2: Why didn't the bot show in the participant list? */}
+              <div className="rounded-xl border border-blue-500/30 bg-blue-950/20 p-3.5 space-y-1.5">
+                <div className="flex items-center gap-2 text-blue-300 font-bold">
+                  <Users className="h-4 w-4 shrink-0" />
+                  <span>2. Why External Bots Require Host "Admit" in the Lobby</span>
+                </div>
+                <p className="text-slate-300 text-[11px] sm:text-xs leading-relaxed">
+                  For security and privacy, Google Meet and Zoom do <strong>not</strong> allow external guests or automated bots to sneak into a call unannounced. When a headless bot joins, Google Meet displays a prompt on the meeting host's screen:
+                </p>
+                <div className="bg-slate-950/90 rounded-lg p-2.5 border border-blue-500/30 font-mono text-[11px] text-blue-200">
+                  "Someone wants to join this call: MeetMee AI Assistant &bull; [Admit] [Deny]"
+                </div>
+                <p className="text-slate-400 text-[11px]">
+                  Until the meeting host clicks <strong className="text-emerald-300">"Admit"</strong>, the bot is kept in the waiting lobby and will not appear in the active participant list.
+                </p>
+              </div>
+
+              {/* Card 3: The 100% Host-Free Zero Admission Alternative */}
+              <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-3.5 space-y-2">
+                <div className="flex items-center gap-2 text-emerald-300 font-bold">
+                  <Mic className="h-4 w-4 shrink-0 text-emerald-400" />
+                  <span>3. Recommended Zero-Wait Solution: "🎙️ Live Tab/Mic Capture"</span>
+                </div>
+                <p className="text-slate-300 text-[11px] sm:text-xs leading-relaxed">
+                  If you are already attending the meeting on your computer or phone, you do <strong>not</strong> need to wait for a bot or host admission! Click <strong className="text-emerald-300">"🎙️ Live Tab/Mic Capture"</strong> on the homepage. MeetMee captures your audio directly in your browser with zero host approval required.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+                  <div className="bg-slate-950/70 p-2 rounded-lg border border-emerald-500/20">
+                    <span className="text-emerald-400 font-bold block">✓ No Host Admission</span>
+                    <span className="text-slate-400 text-[10px]">Zero waiting in lobby</span>
+                  </div>
+                  <div className="bg-slate-950/70 p-2 rounded-lg border border-emerald-500/20">
+                    <span className="text-emerald-400 font-bold block">✓ 100% Reliable</span>
+                    <span className="text-slate-400 text-[10px]">Captures live browser sound</span>
+                  </div>
+                  <div className="bg-slate-950/70 p-2 rounded-lg border border-emerald-500/20">
+                    <span className="text-emerald-400 font-bold block">✓ Instant Pop-up Q&amp;A</span>
+                    <span className="text-slate-400 text-[10px]">Mentors answers pop up live</span>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPresenceGuideModal(false);
+                  handleToggleLiveTabCapture();
+                }}
+                className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              >
+                <Mic className="h-4 w-4" />
+                <span>Start 🎙️ Live Tab/Mic Capture Now</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowPresenceGuideModal(false)}
+                className="w-full sm:w-auto rounded-xl border border-slate-700 bg-slate-800 text-slate-200 text-xs font-semibold px-4 py-2.5 hover:bg-slate-700 transition-colors cursor-pointer"
+              >
+                Understood, Close Guide
+              </button>
+            </div>
           </div>
         </div>
       )}
