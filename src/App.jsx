@@ -61,9 +61,20 @@ import {
   CreditCard,
   Info,
   HelpCircle,
-  AlertCircle
+  AlertCircle,
+  Database
 } from 'lucide-react';
 import paymentQrImage from './assets/payment_qr.jpg';
+import { 
+  supabase, 
+  isSupabaseConfigured, 
+  activeSupabaseUrl, 
+  activeSupabaseKey, 
+  saveSupabaseCredentials, 
+  clearSupabaseCredentials, 
+  syncUserToSupabase, 
+  syncMeetingToSupabase 
+} from './supabase';
 
 // =========================================================================
 // DESIGNATED VIP SUBSCRIPTION ACCOUNT (LIFETIME FREE VIP ALL TIME)
@@ -629,6 +640,11 @@ export default function App() {
   const [meetingUrlError, setMeetingUrlError] = useState(null);
   const [meetingLinkStatus, setMeetingLinkStatus] = useState('live'); // 'live' | 'ended'
   const [copiedParticipantName, setCopiedParticipantName] = useState(false);
+  const [showSupabaseModal, setShowSupabaseModal] = useState(false);
+  const [supabaseUrlInput, setSupabaseUrlInput] = useState(activeSupabaseUrl);
+  const [supabaseKeyInput, setSupabaseKeyInput] = useState(activeSupabaseKey);
+  const [supabaseStatusMsg, setSupabaseStatusMsg] = useState(null);
+  const [isSupabaseLive, setIsSupabaseLive] = useState(isSupabaseConfigured);
 
   // In-House Native Bot & Direct Tab Capture States
   const [isLiveListening, setIsLiveListening] = useState(false);
@@ -690,6 +706,32 @@ export default function App() {
     const m = Math.floor(secs / 60).toString().padStart(2, '0');
     const s = (secs % 60).toString().padStart(2, '0');
     return `${m}:${s}`;
+  };
+
+  // Supabase Database Connection Handlers
+  const handleSaveSupabase = (e) => {
+    e.preventDefault();
+    if (!supabaseUrlInput.trim() || !supabaseKeyInput.trim()) {
+      setSupabaseStatusMsg({ type: 'error', text: 'Please enter both your Supabase Project URL and Anon/Public Key.' });
+      return;
+    }
+    saveSupabaseCredentials(supabaseUrlInput, supabaseKeyInput);
+    setSupabaseStatusMsg({ type: 'success', text: 'Connecting and syncing to Supabase...' });
+    setIsSupabaseLive(true);
+    syncUserToSupabase(activeUser);
+    setTimeout(() => {
+      setShowSupabaseModal(false);
+      setUpgradeNotification("⚡ Supabase PostgreSQL connected! Cloud database sync is active.");
+      setTimeout(() => setUpgradeNotification(null), 5000);
+    }, 1200);
+  };
+
+  const handleDisconnectSupabase = () => {
+    clearSupabaseCredentials();
+    setIsSupabaseLive(false);
+    setSupabaseUrlInput('');
+    setSupabaseKeyInput('');
+    setSupabaseStatusMsg({ type: 'info', text: 'Disconnected from Supabase. Switched to browser storage.' });
   };
 
   // Custom Action Item Input
@@ -879,6 +921,9 @@ export default function App() {
       meetingsCount: u.meetingsCount + 1,
       meetings: [newMeeting, ...u.meetings]
     }));
+
+    // Auto-sync meeting to Supabase PostgreSQL database
+    syncMeetingToSupabase(newMeeting, activeUser.id);
 
     setSelectedMeetingId(meetingId);
     setIsBotJoined(true);
@@ -1107,6 +1152,8 @@ export default function App() {
       meetingsCount: u.meetingsCount + 1,
       meetings: [liveMeeting, ...u.meetings]
     }));
+    // Auto-sync live meeting to Supabase
+    syncMeetingToSupabase(liveMeeting, activeUser.id);
     setSelectedMeetingId(liveMeetingId);
     setIsLiveListening(true);
     setIsBotJoined(true);
@@ -1156,6 +1203,8 @@ export default function App() {
       meetingsCount: u.meetingsCount + 1,
       meetings: [uploadMeeting, ...u.meetings]
     }));
+    // Auto-sync uploaded meeting to Supabase
+    syncMeetingToSupabase(uploadMeeting, activeUser.id);
     setSelectedMeetingId(uploadMeetingId);
     setActiveTab('notes');
     setUpgradeNotification(`Processed audio file: ${file.name}`);
@@ -1718,6 +1767,23 @@ export default function App() {
                   <ChevronDown className="h-3 w-3 text-slate-400" />
                 </div>
               </div>
+            </button>
+
+            {/* Supabase Cloud Database Status Badge */}
+            <button
+              onClick={() => setShowSupabaseModal(true)}
+              className={`flex items-center gap-1.5 rounded-lg sm:rounded-xl border px-2 sm:px-2.5 py-1.5 text-xs transition-all shrink-0 cursor-pointer ${
+                isSupabaseLive
+                  ? 'border-emerald-500/40 bg-emerald-950/40 text-emerald-300 hover:bg-emerald-900/40'
+                  : 'border-slate-800 bg-slate-900/80 text-slate-400 hover:text-emerald-400 hover:border-emerald-500/30'
+              }`}
+              title="Cloud Database (Supabase PostgreSQL + pgvector)"
+            >
+              <Database className={`h-3.5 w-3.5 ${isSupabaseLive ? 'text-emerald-400' : 'text-slate-400'}`} />
+              <span className="hidden md:inline font-medium">
+                {isSupabaseLive ? 'Supabase Connected' : 'Connect DB'}
+              </span>
+              <span className={`h-1.5 w-1.5 rounded-full ${isSupabaseLive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`}></span>
             </button>
 
             {/* Exit Meeting Quick Button in Header (Visible during active call) */}
@@ -4274,6 +4340,132 @@ export default function App() {
                 Understood, Close Guide
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* SUPABASE CLOUD DATABASE CONNECTION MODAL */}
+      {/* ========================================================================= */}
+      {showSupabaseModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto animate-in fade-in">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-700/80 rounded-2xl p-5 sm:p-6 shadow-2xl space-y-4 my-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="h-9 w-9 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
+                  <Database className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Supabase Cloud Database</h3>
+                  <p className="text-[11px] text-slate-400">PostgreSQL with pgvector for real-time meeting intelligence</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSupabaseModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Status indicator */}
+            <div className={`p-3 rounded-xl border text-xs flex items-center justify-between gap-2 ${
+              isSupabaseLive
+                ? 'border-emerald-500/40 bg-emerald-950/30 text-emerald-200'
+                : 'border-slate-800 bg-slate-950/70 text-slate-400'
+            }`}>
+              <div className="flex items-center gap-2">
+                <span className={`h-2.5 w-2.5 rounded-full ${isSupabaseLive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`}></span>
+                <span className="font-semibold text-white">
+                  {isSupabaseLive ? 'Connected to Supabase PostgreSQL' : 'Local Storage Mode (Supabase Disconnected)'}
+                </span>
+              </div>
+              {isSupabaseLive && (
+                <button
+                  type="button"
+                  onClick={handleDisconnectSupabase}
+                  className="text-[10px] text-rose-400 hover:text-rose-300 underline cursor-pointer"
+                >
+                  Disconnect
+                </button>
+              )}
+            </div>
+
+            {/* Notification message */}
+            {supabaseStatusMsg && (
+              <div className={`p-2.5 rounded-xl border text-xs flex items-center gap-2 ${
+                supabaseStatusMsg.type === 'error'
+                  ? 'border-rose-500/40 bg-rose-950/40 text-rose-200'
+                  : 'border-emerald-500/40 bg-emerald-950/40 text-emerald-200'
+              }`}>
+                <span>{supabaseStatusMsg.text}</span>
+              </div>
+            )}
+
+            {/* Settings Form */}
+            <form onSubmit={handleSaveSupabase} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                  Supabase Project URL
+                </label>
+                <input
+                  type="url"
+                  required
+                  value={supabaseUrlInput}
+                  onChange={(e) => setSupabaseUrlInput(e.target.value)}
+                  placeholder="https://your-project-ref.supabase.co"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
+                />
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Find in Supabase: Project Settings → API → Project URL
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                  Supabase Anon / Public Key
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={supabaseKeyInput}
+                  onChange={(e) => setSupabaseKeyInput(e.target.value)}
+                  placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
+                />
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Find in Supabase: Project Settings → API → Project API Keys → anon / public
+                </span>
+              </div>
+
+              {/* Schema Hint */}
+              <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5 text-[11px] text-slate-400 space-y-1">
+                <span className="font-semibold text-slate-300 block">Database Schema:</span>
+                <p>
+                  To create the tables in Supabase with pgvector, run the script located at <code className="text-emerald-400 font-mono">backend/supabase_schema.sql</code> in your Supabase SQL Editor.
+                </p>
+              </div>
+
+              {/* Modal Buttons */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowSupabaseModal(false)}
+                  className="rounded-xl border border-slate-700 bg-slate-800 text-slate-300 text-xs font-semibold px-4 py-2 hover:bg-slate-700 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold px-5 py-2 shadow-lg shadow-emerald-600/30 flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span>Save &amp; Connect to Supabase</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
