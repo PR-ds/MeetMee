@@ -224,7 +224,7 @@ export const validateMeetingUrl = (rawUrl) => {
       return {
         isValid: false,
         platform: 'Zoom',
-        error: 'Incomplete Zoom link. Zoom links must include a valid meeting ID (e.g., zoom.us/j/94827103841).',
+        error: 'Incomplete Zoom link. Zoom links must include a valid meeting ID.',
         code: null
       };
     }
@@ -638,7 +638,6 @@ export default function App() {
   const [upgradeNotification, setUpgradeNotification] = useState(null);
   const [showPresenceGuideModal, setShowPresenceGuideModal] = useState(false);
   const [meetingUrlError, setMeetingUrlError] = useState(null);
-  const [meetingLinkStatus, setMeetingLinkStatus] = useState('live'); // 'live' | 'ended'
   const [copiedParticipantName, setCopiedParticipantName] = useState(false);
   const [showSupabaseModal, setShowSupabaseModal] = useState(false);
   const [supabaseUrlInput, setSupabaseUrlInput] = useState(activeSupabaseUrl);
@@ -843,14 +842,6 @@ export default function App() {
     } catch (e) {}
   };
 
-  // Quick Preset Meeting loader
-  const handleApplyPreset = (presetName, presetUrl) => {
-    setMeetingTitle(presetName);
-    setMeetingUrl(presetUrl);
-    setMeetingUrlError(null);
-    setMeetingLinkStatus('live');
-  };
-
   // =========================================================================
   // MEETING INGESTION & IN-HOUSE BOT ENGINE (ZERO RECALL.AI DEPENDENCY)
   // =========================================================================
@@ -866,13 +857,6 @@ export default function App() {
       return;
     }
 
-    // Check if user indicated call already ended (e.g. Afternoon meeting)
-    if (meetingLinkStatus === 'ended') {
-      alert("⚠️ This meeting room has concluded. Google Meet & Zoom permanently close session codes once the call ends, so participants or bots cannot enter past rooms.\n\nTo transcribe and generate notes/comics from this concluded meeting, please click '📁 Upload Audio File'.");
-      fileInputRef.current?.click();
-      return;
-    }
-
     // Strict URL Validation (Verifies Google Meet codes, Zoom IDs, MS Teams format)
     const validation = validateMeetingUrl(meetingUrl);
     if (!validation.isValid) {
@@ -882,7 +866,7 @@ export default function App() {
 
     const platform = validation.platform;
     const url = meetingUrl.trim();
-    const title = meetingTitle.trim() || `${platform} Live Call (${validation.code || 'Meeting'})`;
+    const title = meetingTitle.trim() || `${platform} Live Session`;
     const meetingId = `mtg-${Date.now()}`;
 
     // 1. REAL STEP: Open the meeting in a new browser tab so the user is directly inside the call
@@ -900,7 +884,7 @@ export default function App() {
       daysUntilPurge: 30,
       summary: {
         tldr: [
-          `Active in-call meeting copilot listening to ${platform} (${validation.code || 'Room'}).`,
+          `Active in-call meeting copilot listening to ${platform}.`,
           `Continuous browser audio tap streaming to sub-second vector RAG engine.`,
           `Mentor address and question detector listening in real-time.`
         ],
@@ -1769,22 +1753,6 @@ export default function App() {
               </div>
             </button>
 
-            {/* Supabase Cloud Database Status Badge */}
-            <button
-              onClick={() => setShowSupabaseModal(true)}
-              className={`flex items-center gap-1.5 rounded-lg sm:rounded-xl border px-2 sm:px-2.5 py-1.5 text-xs transition-all shrink-0 cursor-pointer ${
-                isSupabaseLive
-                  ? 'border-emerald-500/40 bg-emerald-950/40 text-emerald-300 hover:bg-emerald-900/40'
-                  : 'border-slate-800 bg-slate-900/80 text-slate-400 hover:text-emerald-400 hover:border-emerald-500/30'
-              }`}
-              title="Cloud Database (Supabase PostgreSQL + pgvector)"
-            >
-              <Database className={`h-3.5 w-3.5 ${isSupabaseLive ? 'text-emerald-400' : 'text-slate-400'}`} />
-              <span className="hidden md:inline font-medium">
-                {isSupabaseLive ? 'Supabase Connected' : 'Connect DB'}
-              </span>
-              <span className={`h-1.5 w-1.5 rounded-full ${isSupabaseLive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`}></span>
-            </button>
 
             {/* Exit Meeting Quick Button in Header (Visible during active call) */}
             {(isBotJoined || isLiveListening) && (
@@ -1909,38 +1877,7 @@ export default function App() {
               </p>
             </div>
 
-            {/* Quick-Join Presets for Immediate Useful Testing */}
-            <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-              <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1 mr-1">
-                <Zap className="h-3 w-3 text-amber-400" /> Presets:
-              </span>
-              <button
-                type="button"
-                onClick={() => handleApplyPreset("Google Meet Sprint Review", "https://meet.google.com/zqb-wmpk-tva")}
-                className="rounded-lg bg-slate-900 border border-slate-800 hover:border-blue-500/50 px-2 py-1 text-[11px] text-slate-300 hover:text-white transition-all cursor-pointer"
-                title="Google Meet with valid room code (zqb-wmpk-tva)"
-              >
-                Google Meet (zqb-wmpk-tva)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleApplyPreset("Zoom Client Standup", "https://zoom.us/j/94827103841")}
-                className="rounded-lg bg-slate-900 border border-slate-800 hover:border-blue-500/50 px-2 py-1 text-[11px] text-slate-300 hover:text-white transition-all cursor-pointer"
-                title="Zoom Call with valid meeting ID (948-271-03841)"
-              >
-                Zoom Call (948-271-03841)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleApplyPreset("MS Teams Architecture Sync", "https://teams.microsoft.com/l/meetup-join/19%3ameeting_sync%40thread.v2/0")}
-                className="rounded-lg bg-slate-900 border border-slate-800 hover:border-blue-500/50 px-2 py-1 text-[11px] text-slate-300 hover:text-white transition-all cursor-pointer"
-                title="Microsoft Teams with valid meetup-join link"
-              >
-                MS Teams Meeting
-              </button>
-            </div>
-
-            {/* Informational Guidance: Ended / Afternoon Meetings & Participant Presence */}
+            {/* Informational Guidance: Participant Presence & Capture */}
             <div className="rounded-2xl border border-blue-500/30 bg-gradient-to-r from-blue-950/40 via-slate-900 to-indigo-950/40 p-3.5 sm:p-4 text-xs space-y-2 shadow-lg">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-start gap-2.5">
@@ -1949,15 +1886,13 @@ export default function App() {
                   </div>
                   <div>
                     <div className="font-bold text-white text-xs sm:text-sm flex items-center gap-2 flex-wrap">
-                      <span>Testing with an Ended / Afternoon Call?</span>
-                      <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-medium">
-                        Meeting Notice
+                      <span>Live Meeting Copilot &amp; Attendance</span>
+                      <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-medium">
+                        Autonomous AI
                       </span>
                     </div>
                     <p className="text-slate-300 text-[11px] sm:text-xs mt-1 leading-relaxed">
-                      Google Meet &amp; Zoom permanently terminate room codes once the call ends. Bots cannot join an expired room from earlier today. 
-                      If your meeting already concluded, use <strong className="text-blue-300">Upload Audio File</strong> for instant summary &amp; comics. 
-                      For live calls, external bots require the host to click <strong className="text-emerald-300">"Admit"</strong> in the lobby — or use <strong className="text-emerald-300">🎙️ Live Tab/Mic Capture</strong> for instant host-free recording!
+                      Paste a live Google Meet, Zoom, or Microsoft Teams meeting link below to dispatch your AI copilot. You can also use <strong className="text-emerald-300">🎙️ Live Tab/Mic Capture</strong> for direct in-browser capture or <strong className="text-blue-300">Upload Audio File</strong> to process recorded audio.
                     </p>
                   </div>
                 </div>
@@ -2005,7 +1940,7 @@ export default function App() {
                       return (
                         <div className="flex items-center gap-1.5 text-[11px] text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 rounded-lg px-2.5 py-1.5">
                           <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
-                          <span>Valid {validation.platform} format {validation.code ? `(Room: ${validation.code})` : ''}</span>
+                          <span>Valid {validation.platform} meeting link</span>
                         </div>
                       );
                     } else {
@@ -2014,7 +1949,7 @@ export default function App() {
                           <AlertCircle className="h-3.5 w-3.5 shrink-0 text-rose-400 mt-0.5" />
                           <div className="space-y-0.5">
                             <div className="font-semibold text-rose-200">{validation.error}</div>
-                            <div className="text-[10px] text-rose-300/80">Example format: meet.google.com/abc-defg-hij or zoom.us/j/94827103841</div>
+                            <div className="text-[10px] text-rose-300/80">Please enter a valid Google Meet, Zoom, or Microsoft Teams link</div>
                           </div>
                         </div>
                       );
@@ -2022,71 +1957,6 @@ export default function App() {
                   })()}
                 </div>
               )}
-
-              {/* Meeting Call Session Status Check (Checks whether call is live or already ended) */}
-              <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 space-y-2.5">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-slate-300 flex items-center gap-1.5">
-                    <Clock className="h-3.5 w-3.5 text-blue-400" />
-                    Meeting Status Pre-Flight Check:
-                  </span>
-                  <span className="text-[11px] text-slate-400">Verify room state before launching</span>
-                </div>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setMeetingLinkStatus('live')}
-                    className={`rounded-lg border px-3 py-2 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      meetingLinkStatus === 'live'
-                        ? 'border-emerald-500/60 bg-emerald-950/50 text-emerald-300 shadow-sm'
-                        : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                    <span>🟢 Live Call (In Progress Now)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setMeetingLinkStatus('ended')}
-                    className={`rounded-lg border px-3 py-2 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      meetingLinkStatus === 'ended'
-                        ? 'border-amber-500/60 bg-amber-950/50 text-amber-300 shadow-sm'
-                        : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    <span className="h-2 w-2 rounded-full bg-amber-400"></span>
-                    <span>🔴 Ended Call (Afternoon / Expired Room)</span>
-                  </button>
-                </div>
-
-                {/* Warning and Guidance for Concluded / Afternoon Calls */}
-                {meetingLinkStatus === 'ended' && (
-                  <div className="rounded-lg border border-amber-500/40 bg-amber-950/30 p-2.5 text-xs text-amber-200 space-y-2 animate-in fade-in">
-                    <div className="flex items-start gap-2">
-                      <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
-                      <div className="space-y-1">
-                        <div className="font-bold text-amber-300">Concluded / Afternoon Room Detected</div>
-                        <p className="text-[11px] text-slate-300 leading-relaxed">
-                          Google Meet &amp; Zoom permanently close room codes once the call ends. Bots cannot join an expired room from earlier today.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="pt-2 border-t border-amber-500/20 flex items-center justify-between gap-2 flex-wrap">
-                      <span className="text-[11px] text-slate-300">Have an audio file or recording of this concluded call?</span>
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs px-3 py-1.5 flex items-center gap-1.5 transition-all cursor-pointer shadow-md"
-                      >
-                        <UploadCloud className="h-3.5 w-3.5" />
-                        <span>Upload Audio File for This Call</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
 
               {/* Participant Identity Helper: How to show online in Google Meet */}
               <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-2.5 text-xs flex items-center justify-between gap-2 flex-wrap">
@@ -2131,25 +2001,13 @@ export default function App() {
                   className="w-full sm:flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
                 />
                 
-                {/* Primary Action Button: Launch & Attend Live or Upload Ended Call */}
-                {meetingLinkStatus === 'ended' ? (
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-full sm:w-auto rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-amber-500/25 transition-all hover:scale-102 active:scale-95 flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
-                  >
-                    <UploadCloud className="h-4 w-4" />
-                    Upload Audio File
-                  </button>
-                ) : (
-                  <button
-                    type="submit"
-                    className="w-full sm:w-auto rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-blue-500/25 transition-all hover:scale-102 active:scale-95 flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
-                  >
-                    <Bot className="h-4 w-4" />
-                    🚀 Launch &amp; Attend Meeting
-                  </button>
-                )}
+                <button
+                  type="submit"
+                  className="w-full sm:w-auto rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-blue-500/25 transition-all hover:scale-102 active:scale-95 flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                >
+                  <Bot className="h-4 w-4" />
+                  🚀 Launch &amp; Attend Meeting
+                </button>
               </div>
 
               {/* Action Buttons Row: Tab Capture & Audio File Upload */}
@@ -2953,7 +2811,7 @@ export default function App() {
                     </div>
                     <h4 className="text-base font-bold text-white">No Meetings Recorded Yet</h4>
                     <p className="text-xs text-slate-400 max-w-md mx-auto">
-                      {activeUser.name} has not attended any meetings yet. Paste a link above, click <strong>🎙️ Live Tab/Mic Capture</strong>, or choose a preset to record your first meeting.
+                      {activeUser.name} has not attended any meetings yet. Paste a link above, click <strong>🎙️ Live Tab/Mic Capture</strong>, or upload an audio recording to get started.
                     </p>
                   </div>
                 ) : filteredMeetings.length === 0 ? (
