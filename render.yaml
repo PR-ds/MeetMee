@@ -14,6 +14,8 @@ services:
       - key: ENVIRONMENT
         value: production
       - key: USE_SQLITE
-        value: "true"
+        value: "false"
+      - key: DATABASE_URL
+        sync: false
       - key: CORS_ORIGINS
         value: '["*"]'
